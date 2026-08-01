@@ -33,7 +33,7 @@ public class CallCortexAgent extends UserAction<java.lang.String>
 		// BEGIN USER CODE
 
 		// === CONFIG ===
-		String account = "YGVORDH-IA82097";
+		String account = "AYUGBCE-JX50275";
 		String user = "MENDIX_SERVICE_USER";
 		String database = "MENDIX_APP";
 		String schema = "AGENTS";

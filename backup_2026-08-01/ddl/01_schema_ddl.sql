@@ -1,4 +1,4 @@
-create or replace schema MENDIX_APP.AGENTS;
+create schema if not exists MENDIX_APP.AGENTS;
 
 create or replace tag MENDIX_APP.AGENTS.DATA_DOMAIN COMMENT='Business domain classification'
 ;
@@ -9,7 +9,7 @@ create or replace tag MENDIX_APP.AGENTS.DATA_SENSITIVITY COMMENT='Data sensitivi
 create or replace tag MENDIX_APP.AGENTS.PII_FLAG COMMENT='Contains Personally Identifiable Information: YES/NO'
 ;
 create or replace TABLE MENDIX_APP.AGENTS.AI_ANOMALY_REPORT (
-	REPORT_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	REPORT_ID NUMBER(38,0) NOT NULL autoincrement start 100 increment 1 noorder,
 	ANOMALY_TYPE VARCHAR(50),
 	SEVERITY VARCHAR(20),
 	BL_IDS VARCHAR(200),
@@ -36,7 +36,7 @@ create or replace TABLE MENDIX_APP.AGENTS.AI_CALL_LOG (
 	OUTPUT_TOKENS NUMBER(10,0),
 	LATENCY_MS NUMBER(10,0),
 	STATUS VARCHAR(20),
-	LOG_ID NUMBER(38,0) autoincrement start 1 increment 1 noorder,
+	LOG_ID NUMBER(38,0) autoincrement start 400 increment 1 noorder,
 	primary key (CALL_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.AI_CLASSIFICATION_CACHE (
@@ -88,7 +88,7 @@ create or replace TABLE MENDIX_APP.AGENTS.APP_CONFIG (
 	primary key (CONFIG_KEY)
 );
 create or replace TABLE MENDIX_APP.AGENTS.BILL_OF_LADING cluster by (STATUS, CARRIER_NAME, CREATED_AT)(
-	BL_ID NUMBER(38,0) NOT NULL autoincrement start 14000 increment 1 noorder,
+	BL_ID NUMBER(38,0) NOT NULL autoincrement start 15000 increment 1 noorder,
 	BL_NUMBER VARCHAR(50),
 	SHIPPER_NAME VARCHAR(200),
 	SHIPPER_ADDRESS VARCHAR(500),
@@ -139,7 +139,7 @@ create or replace TABLE MENDIX_APP.AGENTS.BILL_OF_LADING cluster by (STATUS, CAR
 	primary key (BL_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED (
-	DOC_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	DOC_ID NUMBER(38,0) NOT NULL autoincrement start 500 increment 1 noorder,
 	FILE_NAME VARCHAR(500) NOT NULL,
 	FILE_PATH VARCHAR(1000),
 	FILE_SIZE_BYTES NUMBER(38,0),
@@ -197,7 +197,7 @@ create or replace TABLE MENDIX_APP.AGENTS.BL_SEARCH_CORPUS (
 	CREATED_AT TIMESTAMP_NTZ(9)
 );
 create or replace TABLE MENDIX_APP.AGENTS.CHAT_SESSION (
-	SESSION_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	SESSION_ID NUMBER(38,0) NOT NULL autoincrement start 100 increment 1 noorder,
 	USER_ID VARCHAR(100),
 	BL_ID NUMBER(38,0),
 	SESSION_START TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP(),
@@ -209,7 +209,7 @@ create or replace TABLE MENDIX_APP.AGENTS.CHAT_SESSION (
 	primary key (SESSION_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT (
-	CHECK_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	CHECK_ID NUMBER(38,0) NOT NULL autoincrement start 300 increment 1 noorder,
 	BL_ID NUMBER(38,0),
 	CHECK_TIMESTAMP TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP(),
 	COMPLIANT BOOLEAN,
@@ -327,7 +327,7 @@ create or replace TABLE MENDIX_APP.AGENTS.ERROR_LOG (
 	RESOLVED BOOLEAN DEFAULT FALSE
 );
 create or replace TABLE MENDIX_APP.AGENTS.FRAUD_ALERT (
-	ALERT_ID NUMBER(38,0) NOT NULL autoincrement start 308 increment 1 noorder,
+	ALERT_ID NUMBER(38,0) NOT NULL autoincrement start 800 increment 1 noorder,
 	ALERT_TYPE VARCHAR(50),
 	SEVERITY VARCHAR(20),
 	DESCRIPTION VARCHAR(1000),
@@ -360,7 +360,7 @@ create or replace TABLE MENDIX_APP.AGENTS.HS_CODE_REFERENCE (
 ) WITH TAG (MENDIX_APP.AGENTS.DATA_DOMAIN='REFERENCE', MENDIX_APP.AGENTS.DATA_OWNER='Operations Team', MENDIX_APP.AGENTS.DATA_SENSITIVITY='PUBLIC', MENDIX_APP.AGENTS.PII_FLAG='NO')
 ;
 create or replace TABLE MENDIX_APP.AGENTS.NOTIFICATION_LOG (
-	NOTIFICATION_ID NUMBER(38,0) autoincrement start 1 increment 1 noorder,
+	NOTIFICATION_ID NUMBER(38,0) autoincrement start 800 increment 1 noorder,
 	NOTIFICATION_TYPE VARCHAR(50),
 	RECIPIENT VARCHAR(200) WITH TAG (MENDIX_APP.AGENTS.PII_FLAG='YES'),
 	SUBJECT VARCHAR(500),
@@ -407,7 +407,7 @@ create or replace TABLE MENDIX_APP.AGENTS.SAP_CO_COST_ALLOCATION (
 	primary key (ALLOCATION_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.SAP_FI_DOCUMENT (
-	FI_DOC_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	FI_DOC_ID NUMBER(38,0) NOT NULL autoincrement start 600 increment 1 noorder,
 	SAP_DOCUMENT_NUMBER VARCHAR(10),
 	COMPANY_CODE VARCHAR(4),
 	FISCAL_YEAR NUMBER(4,0),
@@ -435,7 +435,7 @@ create or replace TABLE MENDIX_APP.AGENTS.SAP_FI_LINE_ITEM (
 	primary key (LINE_ITEM_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.SAP_MM_GOODS_RECEIPT (
-	GR_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	GR_ID NUMBER(38,0) NOT NULL autoincrement start 100 increment 1 noorder,
 	MATERIAL_DOCUMENT VARCHAR(10),
 	MATERIAL_DOC_YEAR NUMBER(4,0),
 	POSTING_DATE DATE,
@@ -463,7 +463,7 @@ create or replace TABLE MENDIX_APP.AGENTS.SAP_SD_DELIVERY (
 	primary key (DELIVERY_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.VESSEL_REGISTRY (
-	VESSEL_ID NUMBER(38,0) NOT NULL autoincrement start 1 increment 1 noorder,
+	VESSEL_ID NUMBER(38,0) NOT NULL autoincrement start 100 increment 1 noorder,
 	VESSEL_NAME VARCHAR(100),
 	IMO_NUMBER VARCHAR(10),
 	FLAG VARCHAR(50),
@@ -477,7 +477,7 @@ create or replace TABLE MENDIX_APP.AGENTS.VESSEL_REGISTRY (
 	primary key (VESSEL_ID)
 );
 create or replace TABLE MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG (
-	AUDIT_ID NUMBER(38,0) autoincrement start 1 increment 1 noorder,
+	AUDIT_ID NUMBER(38,0) autoincrement start 800 increment 1 noorder,
 	WORKFLOW_NAME VARCHAR(100),
 	STEP_NAME VARCHAR(100),
 	STEP_ORDER NUMBER(38,0),
@@ -2806,7 +2806,7 @@ create or replace task MENDIX_APP.AGENTS.TASK_REFRESH_PDF_URLS
 	schedule='50 MINUTE'
 	as CALL MENDIX_APP.AGENTS.REFRESH_PDF_PRESIGNED_URLS();
 create or replace streamlit MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD
-	root_location='@MENDIX_APP.AGENTS.STREAMLIT_STAGE
+	root_location='@MENDIX_APP.AGENTS.STREAMLIT_STAGE'
 	main_file='app.py'
 	query_warehouse='COMPUTE_WH'
 	title='VF Logistics Dashboard';

@@ -83,8 +83,8 @@ Maritime freight fraud (undervalued/overvalued cargo, shell-company shippers, sa
 Upload as many Bills of Lading as you like in a single command, then take them all the way to an autonomous decision with one more:
 
 ```bash
-snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection ygvordh-ia82097
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection ygvordh-ia82097
+snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection ayugbce-jx50275
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection ayugbce-jx50275
 ```
 
 `WORKFLOW_INGEST_AND_DECIDE` chains three stages and logs each one:
@@ -100,12 +100,12 @@ It ships **suspended** so an idle trial account is not billed.
 
 ### Option B — Fraud pipeline only (fastest live demo, no upload needed)
 ```bash
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ygvordh-ia82097
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ayugbce-jx50275
 ```
 
 ### Option C — Full demo script (seed data + run + show audit trail)
 ```bash
-snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ygvordh-ia82097
+snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ayugbce-jx50275
 ```
 
 ### Option D — Natural language via Cortex Agent (CoCo CLI / Snowflake Intelligence)
@@ -113,7 +113,7 @@ snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ygvordh-ia8209
 
 ### Option E — From Python/Snowpark
 ```bash
-python python/snowpark_risk_scoring.py --connection ygvordh-ia82097 --run-workflow
+python python/snowpark_risk_scoring.py --connection ayugbce-jx50275 --run-workflow
 ```
 
 **Expected output** (~6-15s execution):

@@ -89,7 +89,7 @@ public class UploadFileToSnowflake extends CustomJavaAction<java.lang.String>
 		}
 
 		// === SNOWFLAKE CONFIG ===
-		String account = "YGVORDH-IA82097";
+		String account = "AYUGBCE-JX50275";
 		String user = "HOACHAU";
 		String database = "MENDIX_APP";
 		String schema = "AGENTS";

@@ -17,7 +17,7 @@ File created: `javasource/vf_logistics_portal/actions/GetSnowflakeJdbcUrl.java`
 ```java
 String projectPath = System.getProperty("user.dir");  // Dynamic!
 String privateKeyPath = projectPath + "/resources/snowflake_key.p8";
-return "jdbc:snowflake://YGVORDH-IA82097.snowflakecomputing.com/..." + privateKeyPath;
+return "jdbc:snowflake://AYUGBCE-JX50275.snowflakecomputing.com/..." + privateKeyPath;
 ```
 
 ---
@@ -185,7 +185,7 @@ Create a test microflow:
 
 Expected output:
 ```
-jdbc:snowflake://YGVORDH-IA82097.snowflakecomputing.com/?authenticator=SNOWFLAKE_JWT&private_key_file=C:/Users/phuochoa/Mendix/VF_Logistics_Portal-main_2/resources/snowflake_key.p8&JDBC_QUERY_RESULT_FORMAT=JSON
+jdbc:snowflake://AYUGBCE-JX50275.snowflakecomputing.com/?authenticator=SNOWFLAKE_JWT&private_key_file=C:/Users/phuochoa/Mendix/VF_Logistics_Portal-main_2/resources/snowflake_key.p8&JDBC_QUERY_RESULT_FORMAT=JSON
 ```
 
 ---
@@ -198,7 +198,7 @@ If you want a **single source of truth** for Snowflake config:
 
 ```java
 public class SnowflakeConfig {
-    public static String getAccount() { return "YGVORDH-IA82097"; }
+    public static String getAccount() { return "AYUGBCE-JX50275"; }
     public static String getUser() { return "HOACHAU"; }
     public static String getDatabase() { return "MENDIX_APP"; }
     public static String getSchema() { return "AGENTS"; }

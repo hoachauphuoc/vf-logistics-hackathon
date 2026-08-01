@@ -86,7 +86,7 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 
 **On-slide (command):**
 ```bash
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ygvordh-ia82097
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ayugbce-jx50275
 ```
 
 **On-slide (what happens):**

@@ -12,7 +12,7 @@
 > Kept for history rather than corrected in place.
 
 **Test Date**: 2026-07-27  
-**Test Environment**: Snowflake Account YGVORDH-IA82097  
+**Test Environment**: Snowflake Account AYUGBCE-JX50275  
 **Tested By**: Cortex Code  
 **Overall Status**: ✅ **ALL TESTS PASSED** (6/6)
 
