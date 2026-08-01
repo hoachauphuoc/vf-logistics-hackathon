@@ -86,25 +86,34 @@ props.put("password", password);
 | Focus | Status |
 |-------|--------|
 | Real-World Relevance: clear business problem, measurable impact | ✅ Fraud detection, compliance screening — measured by alerts count/execution time |
-| Technical Execution: multi-step orchestration | ✅ `WORKFLOW_FULL_PIPELINE_V2` chains 5 steps (Detect→Investigate→Screen→Remediate→SAP Post) with complete audit log |
-| Technical Execution: **reasoning that drives the action** | ✅ **Fixed 2026-08-01** — the AI's BLOCK/ESCALATE/CLEAR decision is parsed, persisted to `FRAUD_ALERT`, and executed by the remediation step. Previously the orchestrator hardcoded `ESCALATE` and discarded the AI's conclusion. Verified differentiated outcomes: 1 BLOCK (shell company at 3x peer median cost/kg) vs 6 CLEAR (legitimate shippers, clean screening) — see `V_AI_DECISIONS` |
-| Technical Execution: error handling + decision branches | ✅ HIGH/MEDIUM/LOW severity branches, defensive `LIMIT 1`, retry logic (`AI_COMPLETE_WITH_RETRY`), graceful SKIPPED path when no alert qualifies, sanctions-lookup exception fallback |
-| Technical Execution: CoCo CLI + Agent Skills + tools | ✅ 3 Skills packaged and documented; verifiable CLI evidence in `docs/COCO_CLI_EVIDENCE.md` |
-| Solution Completeness: end-to-end | ✅ Data ingestion → AI reasoning → autonomous action → notification → ERP posting |
-| Solution Completeness: minimal manual intervention | ✅ When Tasks resumed, runs automatically via stream/schedule; can trigger on-demand via CLI or the Streamlit dashboard |
-| Explainability for reviewers | ✅ Every decision carries a one-line reason plus the full model risk assessment, surfaced in the *Autonomous AI Decisions* panel of the Streamlit dashboard |
+| Technical Execution: multi-step orchestration | ✅ `WORKFLOW_INGEST_AND_DECIDE` chains 3 stages wrapping `WORKFLOW_FULL_PIPELINE_V2`'s 5 steps, all logged |
+| Technical Execution: **end-to-end, document to decision** | ✅ **Fixed 2026-08-01** — the two halves of the system were previously unconnected (0 row overlap between the extracted and operational tables), so an uploaded PDF could never reach a decision. `SYNC_EXTRACTED_TO_BILL_OF_LADING` now bridges them and a `DOCUMENT_QUALITY` rule makes low-confidence extractions reasonable-over. Verified: 2 PDFs uploaded in one command → one clean document approved silently, one unreliable document escalated with its reason |
+| Technical Execution: **reasoning that drives the action** | ✅ **Fixed 2026-08-01** — the AI's BLOCK/ESCALATE/CLEAR decision is parsed, persisted to `FRAUD_ALERT` and executed by the remediation step. Previously the orchestrator hardcoded `ESCALATE`. Verified differentiated outcomes: 1 BLOCK vs 6 CLEAR — see `V_AI_DECISIONS` |
+| Technical Execution: error handling + decision branches | ✅ severity tiers, defensive `LIMIT 1`, retry wrapper, safe default to human review when the model output cannot be parsed, graceful SKIPPED path when no alert qualifies, sanctions-lookup exception fallback |
+| Technical Execution: CoCo CLI + Agent Skills + tools | ✅ 3 Skills packaged and documented; verifiable CLI evidence in `docs/COCO_CLI_EVIDENCE.md` (8 sessions with reproducible SQL) |
+| Solution Completeness: end-to-end | ✅ PDF ingestion → AI extraction → promotion → detection → AI reasoning → autonomous action → notification → ERP posting |
+| Solution Completeness: minimal manual intervention | ✅ `TASK_PROCESS_NEW_BL` calls the full flow on a stage stream — one `RESUME` gives hands-off operation; shipped suspended to protect the trial credit |
+| Explainability for reviewers | ✅ Every decision carries a one-line reason plus the full model assessment, in `V_AI_DECISIONS`, in `WORKFLOW_AUDIT_LOG`, and in the Streamlit *Autonomous AI Decisions* panel |
 
 ---
 
-## Summary: Remaining gaps to address (priority order)
+## Summary: submission readiness (2026-08-01)
 
-1. ✅ **Security**: Fixed hardcoded password (moved to environment variable)
-2. ✅ **Language**: All documentation canonicalised to English; duplicate Vietnamese files removed; the one intentional exception (bilingual Cortex Analyst synonyms) is disclosed in Section 2
-3. ✅ **Python/Snowpark**: Script created and syntax-verified
-4. ✅ **Agent Skills**: 3 Skills clearly packaged and documented
-5. ✅ **CoCo CLI evidence**: `docs/COCO_CLI_EVIDENCE.md` added with reproducible verification SQL for judging criterion 1
-6. ✅ **Autonomous decision integrity**: AI decision now drives remediation (was hardcoded `ESCALATE`); decision + reason persisted and surfaced in Streamlit
-7. ✅ **GitHub**: Published at https://github.com/hoachauphuoc/vf-logistics-hackathon (public, 69 files) and referenced in `README.md` and the closing slide
-8. ⬜ **Registration**: Confirm Contest Site registration (§4.1(a))
-9. 🟡 **PPT**: `VF_Logistics_Presentation.pptx` exists in the project root (excluded from git per `.gitignore` — upload it directly to the submission portal). Verify its content matches `PRESENTATION_OUTLINE.md`, especially the closing slide links (§4.5(a))
-10. ✅ **Public MVP URL**: Mendix sandbox URL added to `README.md` Section 0 and the closing slide of `PRESENTATION_OUTLINE.md` — https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously, HTTP 200, no login wall)
+| # | Item | Status |
+|---|---|---|
+| 1 | **Security** — no hardcoded credentials | ✅ password moved to `SNOWFLAKE_MENDIX_PASSWORD`; the illustrative literal was also redacted from this document before publishing |
+| 2 | **Language** — English only (§4.2) | ✅ all docs, deck and code comments; one disclosed exception (bilingual Cortex Analyst synonyms, Section 2) |
+| 3 | **Python / Java** (§9.2) | ✅ Snowpark + Streamlit (Python), Mendix JDBC action (Java) |
+| 4 | **Agent Skills** | ✅ 3 skills documented, with the DOCUMENT_QUALITY rule added to Skill 1 |
+| 5 | **CoCo CLI evidence** (§9.1) | ✅ `docs/COCO_CLI_EVIDENCE.md` — 8 engineering sessions, each with SQL a judge can re-run |
+| 6 | **Decision integrity** | ✅ AI decision drives remediation; decision + reason persisted and surfaced |
+| 7 | **End-to-end flow** | ✅ `WORKFLOW_INGEST_AND_DECIDE` — batch PDF upload to AI decision in one command |
+| 8 | **GitHub source code** (§4.5b) | ✅ https://github.com/hoachauphuoc/vf-logistics-hackathon (public) |
+| 9 | **Presentation deck** (§4.5a) | ✅ `VF_Logistics_Presentation.pptx` — 16 slides; upload directly to the portal (excluded from git by `.gitignore`) |
+| 10 | **Public MVP URL** | ✅ https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously) |
+| 11 | **Registration** (§4.1a) | ✅ team "Sora", 2 members, confirmed on the contest portal |
+| 12 | **Validation report** | ✅ `../docs/reference/TEST_REPORT_FINAL_2026-08-01.md` |
+| 13 | **Judge read-only access** | ✅ `HACKATHON_JUDGE_ROLE` has SELECT on every referenced object incl. `V_AI_DECISIONS` |
+| 14 | **Submit through the portal Submissions tab** | ⬜ the only remaining action |
+
+**Deadline note:** the Terms & Conditions state the Submission Period closes **2026-08-02 23:59 IST**, while the contest portal countdown showed a later date. Treat 2026-08-02 as the binding deadline.

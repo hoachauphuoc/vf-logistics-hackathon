@@ -55,14 +55,30 @@ with col1:
                 st.error(f"Scan error: {str(e)[:100]}")
 
 with col2:
-    st.subheader("🤖 AI Explain")
-    if st.button("💡 AI Explain Latest Alert", use_container_width=True):
-        with st.spinner("AI analyzing..."):
+    st.subheader("📄 Ingest & Decide")
+    st.caption("Processes every new PDF on the stage, promotes it, then decides.")
+    if st.button("📥 Document → Decision", use_container_width=True):
+        with st.spinner("Extract → promote → detect → investigate → screen → decide..."):
             try:
-                result = session.sql("CALL AI_EXPLAIN_ANOMALY('EN')").collect()[0][0]
-                st.info(result)
+                import json
+                raw = session.sql("CALL WORKFLOW_INGEST_AND_DECIDE()").collect()[0][0]
+                st.success("Ingest and decide completed")
+                try:
+                    parsed = json.loads(raw)
+                    st.caption(f"Extraction: {parsed.get('extraction', 'n/a')}")
+                    promo = parsed.get("promotion", {})
+                    if isinstance(promo, dict):
+                        st.caption(f"Documents promoted: {promo.get('documents_promoted', '?')}")
+                    pipe = parsed.get("pipeline", {})
+                    if isinstance(pipe, dict):
+                        st.metric("🤖 AI decision", pipe.get("ai_decision", "n/a"))
+                        if pipe.get("ai_reason"):
+                            st.caption(f"Reason: {pipe['ai_reason']}")
+                    st.caption(f"Total time: {parsed.get('total_execution_time_ms', '?')} ms")
+                except Exception:
+                    st.code(raw, language="json")
             except Exception as e:
-                st.warning(f"AI explain unavailable: {str(e)[:80]}")
+                st.error(f"Ingest error: {str(e)[:150]}")
 
 with col3:
     st.subheader("⚡ Pipeline Demo")

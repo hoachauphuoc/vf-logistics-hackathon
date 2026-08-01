@@ -175,7 +175,9 @@ vf-logistics-hackathon/
 │   └── snowpark_risk_scoring.py    Python/Snowpark risk scoring + orchestration
 ├── mendix-integration/
 │   └── CallCortexAgent.java        Mendix Java action (JDBC → Snowflake)
-└── ../TEST_REPORT_SOLUTION.md      End-to-end validation report (2026-07-27)
+└── ../docs/reference/
+    ├── TEST_REPORT_FINAL_2026-08-01.md   Final end-to-end validation (current)
+    └── TEST_REPORT_SOLUTION.md          Earlier validation run (2026-07-27, superseded)
 ```
 
 ---
@@ -232,4 +234,4 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 - KPI totals confirmed: **10,009 shipments**, **$53,042,546 revenue**, **1,200 pending**, **10 carriers**, **1,809 approved**, **3,000 in transit**
 - Carrier, route, status, and weekly trend charts were corrected to avoid Plotly rendering distortions in Streamlit-in-Snowflake
 - Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**), AI usage, and pipeline controls display correctly during the demo
-- Full system validation report is captured in `../TEST_REPORT_SOLUTION.md`
+- Full system validation report is captured in [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md)

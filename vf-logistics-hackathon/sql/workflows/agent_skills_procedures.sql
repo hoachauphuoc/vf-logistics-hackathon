@@ -53,7 +53,84 @@ WHERE a.AI_RECOMMENDED_ACTION IS NOT NULL;
 
 GRANT SELECT ON VIEW MENDIX_APP.AGENTS.V_AI_DECISIONS TO ROLE HACKATHON_JUDGE_ROLE;
 
-CREATE OR REPLACE PROCEDURE "WORKFLOW_DETECT_AND_ACT"() RETURNS VARCHAR LANGUAGE SQL COMMENT='Automated fraud detection and response: scans new BLs, identifies anomalies (value/weight/cost-per-kg), creates alerts, triggers investigation workflow.' EXECUTE AS CALLER AS 'DECLARE     v_new_alerts NUMBER DEFAULT 0;     v_high_severity NUMBER DEFAULT 0;     v_actions_taken NUMBER DEFAULT 0; BEGIN     INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)     SELECT ''HIGH_VALUE_ANOMALY'', ''HIGH'',         ''Workflow: '' || BL_NUMBER || '' charges $'' || TOTAL_CHARGES || '' exceed $50K'',         BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()     FROM MENDIX_APP.AGENTS.BILL_OF_LADING     WHERE TOTAL_CHARGES > 50000       AND CREATED_AT > DATEADD(''day'', -7, CURRENT_TIMESTAMP())       AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);     v_new_alerts := SQLROWCOUNT;      INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)     SELECT ''WEIGHT_ANOMALY'', ''MEDIUM'',         ''Workflow: '' || BL_NUMBER || '' weight '' || GROSS_WEIGHT_KGS || ''kg exceeds 30T'',         BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()     FROM MENDIX_APP.AGENTS.BILL_OF_LADING     WHERE GROSS_WEIGHT_KGS > 30000       AND CREATED_AT > DATEADD(''day'', -7, CURRENT_TIMESTAMP())       AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);     v_new_alerts := :v_new_alerts + SQLROWCOUNT;      INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)     SELECT ''SUSPICIOUS_PARTY'', ''HIGH'',         ''Workflow: '' || BL_NUMBER || '' suspicious party: '' || SHIPPER_NAME,         BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()     FROM MENDIX_APP.AGENTS.BILL_OF_LADING     WHERE (UPPER(SHIPPER_NAME) LIKE ''%SUSPICIOUS%'' OR UPPER(CONSIGNEE_NAME) LIKE ''%SHELL CORP%'')       AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);     v_new_alerts := :v_new_alerts + SQLROWCOUNT;      SELECT COUNT(*) INTO :v_high_severity FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE SEVERITY = ''HIGH'' AND STATUS = ''OPEN'';      UPDATE MENDIX_APP.AGENTS.BILL_OF_LADING      SET STATUS = ''Pending_Review'', FRAUD_CHECK_PASSED = FALSE     WHERE BL_ID IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE SEVERITY = ''HIGH'' AND STATUS = ''OPEN'' AND BL_ID IS NOT NULL)       AND STATUS NOT IN (''Pending_Review'', ''BLOCKED'');     v_actions_taken := SQLROWCOUNT;      INSERT INTO MENDIX_APP.AGENTS.NOTIFICATION_LOG (NOTIFICATION_TYPE, RECIPIENT, SUBJECT, BODY, STATUS)     VALUES (''WORKFLOW_RUN'', ''system'', ''Fraud Scan Complete'', ''New alerts: '' || :v_new_alerts || '', High: '' || :v_high_severity || '', Flagged: '' || :v_actions_taken, ''SENT'');      RETURN ''{"workflow":"DETECT_AND_ACT","status":"COMPLETED","new_alerts":'' || :v_new_alerts || '',"high_severity_open":'' || :v_high_severity || '',"shipments_flagged":'' || :v_actions_taken || ''}''; END';
+-- ============================================================================
+-- SKILL 1: Fraud, compliance and document-quality detection
+-- ----------------------------------------------------------------------------
+-- Four rules. The first three are commercial (value, weight, counterparty). The
+-- fourth, DOCUMENT_QUALITY, treats an AI extraction that could not be validated
+-- as a compliance risk in its own right, so a PDF ingested with low confidence is
+-- reasoned over by the same investigation skill as a commercial anomaly. It reads
+-- AI_CONFIDENCE_SCORE / REMARKS, which SYNC_EXTRACTED_TO_BILL_OF_LADING populates.
+-- ============================================================================
+CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_DETECT_AND_ACT()
+RETURNS VARCHAR
+LANGUAGE SQL
+COMMENT='Skill 1 - Automated fraud/compliance detection: scans BILL_OF_LADING for commercial anomalies (value, weight, cost-per-kg, suspicious parties) and for low-confidence AI document extractions (DOCUMENT_QUALITY), creates FRAUD_ALERT records and flags the shipments for the investigation step.'
+EXECUTE AS CALLER
+AS
+'DECLARE
+    v_new_alerts NUMBER DEFAULT 0;
+    v_high_severity NUMBER DEFAULT 0;
+    v_actions_taken NUMBER DEFAULT 0;
+BEGIN
+    INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)
+    SELECT ''HIGH_VALUE_ANOMALY'', ''HIGH'',
+        ''Workflow: '' || BL_NUMBER || '' charges $'' || TOTAL_CHARGES || '' exceed $50K'',
+        BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
+    FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+    WHERE TOTAL_CHARGES > 50000
+      AND CREATED_AT > DATEADD(''day'', -7, CURRENT_TIMESTAMP())
+      AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);
+    v_new_alerts := SQLROWCOUNT;
+
+    INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)
+    SELECT ''WEIGHT_ANOMALY'', ''MEDIUM'',
+        ''Workflow: '' || BL_NUMBER || '' weight '' || GROSS_WEIGHT_KGS || ''kg exceeds 30T'',
+        BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
+    FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+    WHERE GROSS_WEIGHT_KGS > 30000
+      AND CREATED_AT > DATEADD(''day'', -7, CURRENT_TIMESTAMP())
+      AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);
+    v_new_alerts := :v_new_alerts + SQLROWCOUNT;
+
+    INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)
+    SELECT ''SUSPICIOUS_PARTY'', ''HIGH'',
+        ''Workflow: '' || BL_NUMBER || '' suspicious party: '' || SHIPPER_NAME,
+        BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
+    FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+    WHERE (UPPER(SHIPPER_NAME) LIKE ''%SUSPICIOUS%'' OR UPPER(CONSIGNEE_NAME) LIKE ''%SHELL CORP%'')
+      AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);
+    v_new_alerts := :v_new_alerts + SQLROWCOUNT;
+
+    -- Document-quality rule: an AI extraction that could not be validated is a
+    -- compliance risk in its own right, so it is raised as an alert and reasoned
+    -- over by the same investigation skill as commercial anomalies.
+    INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_TYPE, SEVERITY, DESCRIPTION, BL_ID, STATUS, CREATED_AT, DETECTED_AT)
+    SELECT ''DOCUMENT_QUALITY'',
+        CASE WHEN AI_CONFIDENCE_SCORE <= 50 THEN ''HIGH'' ELSE ''MEDIUM'' END,
+        ''Workflow: '' || BL_NUMBER || '' AI extraction confidence '' || AI_CONFIDENCE_SCORE::VARCHAR
+            || ''/100 - '' || COALESCE(REMARKS, ''ingested from PDF''),
+        BL_ID, ''OPEN'', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()
+    FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+    WHERE AI_CONFIDENCE_SCORE IS NOT NULL
+      AND AI_CONFIDENCE_SCORE < 85
+      AND CREATED_AT > DATEADD(''day'', -7, CURRENT_TIMESTAMP())
+      AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE BL_ID IS NOT NULL);
+    v_new_alerts := :v_new_alerts + SQLROWCOUNT;
+
+    SELECT COUNT(*) INTO :v_high_severity FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE SEVERITY = ''HIGH'' AND STATUS = ''OPEN'';
+
+    UPDATE MENDIX_APP.AGENTS.BILL_OF_LADING
+    SET STATUS = ''Pending_Review'', FRAUD_CHECK_PASSED = FALSE
+    WHERE BL_ID IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE SEVERITY = ''HIGH'' AND STATUS = ''OPEN'' AND BL_ID IS NOT NULL)
+      AND STATUS NOT IN (''Pending_Review'', ''BLOCKED'');
+    v_actions_taken := SQLROWCOUNT;
+
+    INSERT INTO MENDIX_APP.AGENTS.NOTIFICATION_LOG (NOTIFICATION_TYPE, RECIPIENT, SUBJECT, BODY, STATUS)
+    VALUES (''WORKFLOW_RUN'', ''system'', ''Fraud Scan Complete'', ''New alerts: '' || :v_new_alerts || '', High: '' || :v_high_severity || '', Flagged: '' || :v_actions_taken, ''SENT'');
+
+    RETURN ''{"workflow":"DETECT_AND_ACT","status":"COMPLETED","new_alerts":'' || :v_new_alerts || '',"high_severity_open":'' || :v_high_severity || '',"shipments_flagged":'' || :v_actions_taken || ''}'';
+END';
 
 -- ============================================================
 -- SKILL 2: Compliance & Sanctions Screening
@@ -80,10 +157,24 @@ CREATE OR REPLACE PROCEDURE "WORKFLOW_SANCTIONS_SCREEN"("P_ENTITY_NAME" VARCHAR)
 -- is parsed and PERSISTED to FRAUD_ALERT so the remediation step can act on the
 -- AI's actual conclusion instead of a hardcoded action.
 -- ============================================================================
+-- ============================================================================
+-- SKILL 3 (part 1 of 2): AI INVESTIGATION
+-- ----------------------------------------------------------------------------
+-- Builds a QUANTITATIVE evidence pack before asking the model to decide:
+--   * this shipment's cost-per-kg
+--   * the peer median and 95th percentile cost-per-kg across all shipments
+--   * a live sanctions / export-restriction match count sourced from the
+--     Snowflake Marketplace listing (screening happens BEFORE the decision)
+--   * for PDF-ingested shipments, the extraction confidence and the extraction
+--     validation result, so the model knows how much to trust the data itself
+-- The model must answer with a machine-parseable DECISION / REASON tail, which
+-- is parsed and PERSISTED to FRAUD_ALERT so the remediation step acts on the
+-- AI's actual conclusion instead of a hardcoded action.
+-- ============================================================================
 CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_INVESTIGATE_ANOMALY("P_ALERT_ID" NUMBER(38,0))
 RETURNS VARCHAR
 LANGUAGE SQL
-COMMENT='AI-powered fraud investigation. Builds a quantitative evidence pack (shipment cost-per-kg vs dataset median/p95, sanctions-list match count from Snowflake Marketplace data), asks Cortex AI to apply an explicit BLOCK/ESCALATE/CLEAR rubric, then PERSISTS the reasoning and the parsed decision into FRAUD_ALERT so the remediation step acts on the AI decision rather than a hardcoded action.'
+COMMENT='Skill 3 - AI investigation. Builds a quantitative evidence pack (cost-per-kg vs peer median/p95, live sanctions match count, and - for PDF-ingested shipments - the AI extraction confidence and the extraction alert text), asks Cortex AI to apply an explicit BLOCK/ESCALATE/CLEAR rubric, then persists the reasoning and the parsed decision into FRAUD_ALERT so the remediation step acts on the AI decision rather than a hardcoded action.'
 EXECUTE AS CALLER
 AS '
 DECLARE
@@ -97,11 +188,13 @@ DECLARE
     v_carrier VARCHAR;
     v_port_load VARCHAR;
     v_port_discharge VARCHAR;
+    v_confidence FLOAT;
     v_cost_per_kg FLOAT;
     v_median_cpk FLOAT;
     v_p95_cpk FLOAT;
     v_p95_charges FLOAT;
     v_sanction_hits NUMBER DEFAULT 0;
+    v_doc_context VARCHAR DEFAULT '''';
     v_ai_analysis VARCHAR;
     v_context VARCHAR;
     v_decision VARCHAR;
@@ -113,8 +206,10 @@ BEGIN
     WHERE ALERT_ID = :P_ALERT_ID
     LIMIT 1;
 
-    SELECT BL_NUMBER, SHIPPER_NAME, CONSIGNEE_NAME, TOTAL_CHARGES, GROSS_WEIGHT_KGS, CARRIER_NAME, PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE
-    INTO :v_bl_number, :v_shipper, :v_consignee, :v_charges, :v_weight, :v_carrier, :v_port_load, :v_port_discharge
+    SELECT BL_NUMBER, SHIPPER_NAME, CONSIGNEE_NAME, TOTAL_CHARGES, GROSS_WEIGHT_KGS, CARRIER_NAME,
+           PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE, AI_CONFIDENCE_SCORE
+    INTO :v_bl_number, :v_shipper, :v_consignee, :v_charges, :v_weight, :v_carrier,
+         :v_port_load, :v_port_discharge, :v_confidence
     FROM MENDIX_APP.AGENTS.BILL_OF_LADING
     WHERE BL_ID = :v_bl_id
     LIMIT 1;
@@ -131,35 +226,52 @@ BEGIN
     BEGIN
         SELECT COUNT(*) INTO :v_sanction_hits
         FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
-        WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(:v_shipper) || ''%''
-           OR UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(:v_consignee) || ''%'';
+        WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_shipper, ''~none~'')) || ''%''
+           OR UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_consignee, ''~none~'')) || ''%'';
     EXCEPTION
         WHEN OTHER THEN
             v_sanction_hits := -1;
     END;
 
+    -- Extra evidence when this shipment originated from an ingested PDF
+    BEGIN
+        SELECT '' DOCUMENT PROVENANCE: this shipment was created by AI extraction from the PDF ''
+               || e.FILE_NAME
+               || ''. Extraction confidence '' || COALESCE(e.CONFIDENCE_SCORE::VARCHAR, ''unknown'') || ''/100.''
+               || '' Extraction validation result: '' || COALESCE(e.ALERT, ''not recorded'') || ''.''
+               || '' Detail: '' || COALESCE(e.ALERT_RESPONSE, ''not recorded'')
+        INTO :v_doc_context
+        FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED e
+        WHERE e.BL_ID = :v_bl_id
+        LIMIT 1;
+    EXCEPTION
+        WHEN OTHER THEN
+            v_doc_context := '''';
+    END;
+
     v_context := ''Alert type: '' || :v_alert_type
         || ''. BL: '' || :v_bl_number
-        || ''. Shipper: '' || :v_shipper
-        || ''. Consignee: '' || :v_consignee
-        || ''. Carrier: '' || :v_carrier
-        || ''. Route: '' || :v_port_load || '' -> '' || :v_port_discharge
-        || ''. Charges: $'' || NVL(TO_VARCHAR(:v_charges),''N/A'')
-        || ''. Weight: '' || NVL(TO_VARCHAR(:v_weight),''N/A'') || ''kg''
-        || ''. Cost per kg: $'' || NVL(TO_VARCHAR(:v_cost_per_kg),''N/A'')
-        || ''. PEER BASELINE across 10,000+ shipments: median cost/kg $'' || :v_median_cpk
+        || ''. Shipper: '' || NVL(:v_shipper, ''(not stated)'')
+        || ''. Consignee: '' || NVL(:v_consignee, ''(not stated)'')
+        || ''. Carrier: '' || NVL(:v_carrier, ''(not stated)'')
+        || ''. Route: '' || NVL(:v_port_load, ''?'') || '' -> '' || NVL(:v_port_discharge, ''?'')
+        || ''. Charges: $'' || NVL(TO_VARCHAR(:v_charges),''not stated'')
+        || ''. Weight: '' || NVL(TO_VARCHAR(:v_weight),''not stated'') || ''kg''
+        || ''. Cost per kg: $'' || NVL(TO_VARCHAR(:v_cost_per_kg),''not computable'')
+        || ''. PEER BASELINE across all shipments: median cost/kg $'' || :v_median_cpk
         || '', 95th percentile cost/kg $'' || :v_p95_cpk
         || '', 95th percentile total charges $'' || :v_p95_charges
         || ''. Sanctions/export-restriction list matches for the counterparties: '' || :v_sanction_hits
-        || '' (0 = both parties clear, -1 = screening data unavailable).'';
+        || '' (0 = both parties clear, -1 = screening data unavailable).''
+        || NVL(:v_doc_context, '''');
 
     SELECT SNOWFLAKE.CORTEX.COMPLETE(''mistral-large2'',
-        ''You are a maritime logistics fraud analyst. Analyze the alert below and produce: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key indicators with the actual numbers, 3) The action you decide. Be concise.\\n\\n''
+        ''You are a maritime logistics fraud and compliance analyst. Analyze the alert below and produce: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key indicators with the actual numbers, 3) The action you decide. Be concise.\\n\\n''
         || ''Apply THIS RUBRIC and follow it strictly:\\n''
         || ''- BLOCK: sanctions matches > 0, OR cost/kg exceeds 5x the peer median, OR the counterparty name indicates a shell/front company (e.g. contains "SUSPICIOUS", "SHELL", "UNKNOWN", or is a generic non-identifiable trading name).\\n''
-        || ''- CLEAR: sanctions matches = 0 AND cost/kg is at or below the 95th percentile AND total charges are at or below the 95th percentile AND both counterparties are recognisable real businesses. A weight or duplicate-BL flag alone, with normal economics and clean screening, is a routine data-quality issue and should be CLEARED.\\n''
-        || ''- ESCALATE: only when the evidence is genuinely contradictory or a key figure is missing, so a human must judge.\\n\\n''
-        || ''Do NOT default to ESCALATE. Most flagged shipments with normal economics and clean screening should be CLEARED; only genuinely borderline cases are escalated. Justify your decision with the numbers given.\\n\\n''
+        || ''- ESCALATE: a required commercial figure is missing or unverifiable so a human must judge; OR the document provenance section reports an extraction confidence below 60/100 or a failed validation, because the underlying data cannot be trusted enough to clear or block automatically.\\n''
+        || ''- CLEAR: sanctions matches = 0 AND cost/kg is at or below the 95th percentile AND total charges are at or below the 95th percentile AND both counterparties are recognisable real businesses AND (if document provenance is given) the extraction validated cleanly. A weight or duplicate-BL flag alone, with normal economics and clean screening, is a routine data-quality issue and should be CLEARED.\\n\\n''
+        || ''Do not invent thresholds beyond those above. Justify your decision with the numbers given.\\n\\n''
         || ''You MUST end your response with exactly two final lines in this format:\\n''
         || ''DECISION: <BLOCK or ESCALATE or CLEAR>\\n''
         || ''REASON: <one sentence, max 200 characters, citing the decisive evidence>\\n\\n''
@@ -184,12 +296,12 @@ BEGIN
         || ''","cost_per_kg":'' || NVL(TO_VARCHAR(:v_cost_per_kg),''null'')
         || '',"peer_median_cost_per_kg":'' || :v_median_cpk
         || '',"sanctions_matches":'' || :v_sanction_hits
+        || '',"extraction_confidence":'' || NVL(TO_VARCHAR(:v_confidence),''null'')
         || '',"ai_decision":"'' || :v_decision
         || ''","ai_reason":"'' || REPLACE(:v_reason, ''"'', ''\\\\"'')
         || ''","ai_analysis":'' || :v_ai_analysis || ''}'';
 END
 ';
-
 -- ============================================================================
 -- SKILL 3 (part 2 of 2): AUTONOMOUS REMEDIATION
 -- ----------------------------------------------------------------------------

@@ -1,5 +1,16 @@
 # 🧪 VF LOGISTICS PORTAL - SOLUTION TEST REPORT
 
+> ⚠️ **SUPERSEDED.** This report describes the state of the solution on 2026-07-27,
+> before the document-ingestion bridge and the AI-decided remediation existed.
+> The current validation report is
+> [`TEST_REPORT_FINAL_2026-08-01.md`](TEST_REPORT_FINAL_2026-08-01.md).
+>
+> **Known error in this document:** Section 5 states that the Cortex Search Service
+> "will auto-resume on query". That is wrong — a suspended Cortex Search Service
+> raises `error_code 399131 — Service suspended` and must be resumed explicitly with
+> `ALTER CORTEX SEARCH SERVICE MENDIX_APP.AGENTS.BL_SEARCH_SERVICE RESUME;`.
+> Kept for history rather than corrected in place.
+
 **Test Date**: 2026-07-27  
 **Test Environment**: Snowflake Account YGVORDH-IA82097  
 **Tested By**: Cortex Code  
