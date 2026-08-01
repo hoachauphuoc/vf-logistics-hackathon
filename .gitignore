@@ -21,3 +21,7 @@ Thumbs.db
 *.p8
 *.pem
 .env
+
+# Internal recording artifacts (for producing the demo video, not for reviewers)
+vf-logistics-hackathon/VOICEOVER_SCRIPT_4MIN.md
+vf-logistics-hackathon/DEMO_HUONG_DAN_THAO_TAC_VI.md

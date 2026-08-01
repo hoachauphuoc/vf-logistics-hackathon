@@ -172,6 +172,38 @@ load documents by any other route.
 
 ---
 
+## Regression tests -- run before every demo, not just after restore
+
+Two scripts, added after the 2026-08-01 `/run_pipeline` incident (missing
+`INSERT` grants on `FRAUD_ALERT`, `WORKFLOW_AUDIT_LOG`, `NOTIFICATION_LOG`,
+`BILL_OF_LADING` -- invisible to any check run as `ACCOUNTADMIN`, because
+`ACCOUNTADMIN` owns every object and never hits a privilege error). Run
+**both**, in this order, after any restore and again right before judges
+arrive:
+
+| # | Script | Runs as | Catches |
+|---|---|---|---|
+| 1 | `ddl/05_regression_tests_admin.sql` | `ACCOUNTADMIN` | Missing objects, missing data, missing grant *rows*, wrong auth config, suspended search service |
+| 2 | `_regression_test_mendix_identity.py` | `MENDIX_SERVICE_USER` via key-pair, role `VF_APP_ROLE` | Anything script 1 cannot see -- actually calls `WORKFLOW_FULL_PIPELINE_V2`, `WORKFLOW_INGEST_AND_DECIDE`, `SEARCH_BILL_OF_LADING`, the semantic view, using the **exact identity Mendix uses** |
+
+Script 1 alone would **not** have caught the 2026-08-01 incident. Script 2
+would have caught it immediately, because it fails exactly the way the Mendix
+chat panel failed. Treat script 2 as the real gate for "safe to demo."
+
+```bash
+# 1. Structural check (paste into a Snowsight worksheet, or):
+snow sql -f ddl/05_regression_tests_admin.sql
+
+# 2. Production-identity check (safe to re-run any number of times):
+python _regression_test_mendix_identity.py --skip-mutations   # read-only pass
+python _regression_test_mendix_identity.py                    # full pass, calls the workflows
+```
+
+Both scripts print a clear `PASS`/`FAIL` line per check and a one-line
+verdict at the end -- zero `FAIL` rows on both means it is safe to go live.
+
+---
+
 ## Cost posture after restore
 
 Everything is exported in a **suspended** state, which is how the source account
