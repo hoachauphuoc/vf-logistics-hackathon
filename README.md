@@ -8,6 +8,8 @@ An AI-driven agentic system that autonomously detects, investigates, screens, an
 
 ## Start here
 
+**Repository:** https://github.com/hoachauphuoc/vf-logistics-hackathon
+
 > ### **[`vf-logistics-hackathon/README.md`](./vf-logistics-hackathon/README.md) — the full submission document**
 >
 > Read that file first. It contains the problem statement, architecture, the 3 Agent Skills, how to run the workflow from the CLI, datasets used, and the judging-criteria mapping.

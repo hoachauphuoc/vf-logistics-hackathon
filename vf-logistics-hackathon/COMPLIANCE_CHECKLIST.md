@@ -11,7 +11,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | (a) Complete profile (name, email, phone, country) | ⬜ Not confirmed | Must register on Contest Site before 08/02/2026 |
 | (b) The Idea | ✅ Yes | Intelligent Workflow Automation Agent for logistics fraud detection |
 | (c) The Prototype | ✅ Yes | VF Logistics Portal (Mendix, public sandbox at https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive) + Snowflake backend working end-to-end |
-| (d) Presentation materials + source code link | 🟡 In progress | README, presentation outline, voice-over script, and test report updated; add final GitHub URL before submission |
+| (d) Presentation materials + source code link | ✅ Yes | Source code: https://github.com/hoachauphuoc/vf-logistics-hackathon — README, presentation outline, voice-over script, CoCo CLI evidence and test report all included |
 
 ## 2. Section 4.2 — Language
 
@@ -42,7 +42,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | Requirement | Status | Action |
 |-------------|--------|--------|
 | (a) Presentation deck (PPT) | 🟡 Outline ready | Content updated; still needs final PPT export |
-| (b) Source code on GitHub | ⬜ Not pushed yet | Code and docs are organized locally in `vf-logistics-hackathon/`; publish final repo URL before submission |
+| (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, 69 files, includes the submission docs, agent-skill SQL, Streamlit app source, Snowpark script and Mendix Java integration |
 | (c) Live demo (if reaching Finals) | ✅ Ready | `CALL WORKFLOW_FULL_PIPELINE_V2()` runs successfully via CLI, execution ~6.3s |
 | (d) Technical readiness | ✅ | Streamlit + Mendix + Cortex Agent tested and working; dashboard charts/UI validated on 2026-07-27 |
 
@@ -104,7 +104,7 @@ props.put("password", password);
 4. ✅ **Agent Skills**: 3 Skills clearly packaged and documented
 5. ✅ **CoCo CLI evidence**: `docs/COCO_CLI_EVIDENCE.md` added with reproducible verification SQL for judging criterion 1
 6. ✅ **Autonomous decision integrity**: AI decision now drives remediation (was hardcoded `ESCALATE`); decision + reason persisted and surfaced in Streamlit
-7. ⬜ **GitHub**: Push code and paste the final repository URL into the docs — **mandatory under §4.5(b), still outstanding**
+7. ✅ **GitHub**: Published at https://github.com/hoachauphuoc/vf-logistics-hackathon (public, 69 files) and referenced in `README.md` and the closing slide
 8. ⬜ **Registration**: Confirm Contest Site registration (§4.1(a))
-9. 🟡 **PPT**: Convert `PRESENTATION_OUTLINE.md` to actual PowerPoint slides (§4.5(a))
+9. 🟡 **PPT**: `VF_Logistics_Presentation.pptx` exists in the project root (excluded from git per `.gitignore` — upload it directly to the submission portal). Verify its content matches `PRESENTATION_OUTLINE.md`, especially the closing slide links (§4.5(a))
 10. ✅ **Public MVP URL**: Mendix sandbox URL added to `README.md` Section 0 and the closing slide of `PRESENTATION_OUTLINE.md` — https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously, HTTP 200, no login wall)

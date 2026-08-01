@@ -192,7 +192,7 @@ LIMIT 5;
 ## Slide 12: Thank You / Links
 
 **On-slide:**
-- GitHub repo: add final repository URL before export
+- GitHub repo: https://github.com/hoachauphuoc/vf-logistics-hackathon
 - Public MVP (Mendix): https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
 - Contact: `hoachauphuoc@gmail.com`
 
