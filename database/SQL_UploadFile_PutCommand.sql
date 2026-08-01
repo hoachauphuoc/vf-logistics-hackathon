@@ -1,0 +1,56 @@
+-- ============================================
+-- SQL used by the "Execute Query" (Database Connector) step
+-- in the ACT_AnalyzeBillOfLading microflow, INSERTED BEFORE the
+-- existing AI_COMPLETE query step.
+-- ============================================
+-- PURPOSE: Upload the local temp file (written by UploadFileToSnowflake) to the
+-- Snowflake stage, reusing the SAME JDBC connection config already proven to work
+-- for the AI_COMPLETE query (built via vf_logistics_portal.GetSnowflakeJdbcUrl()).
+--
+-- IMPORTANT — why this is NOT an "Execute Parameterized Query":
+-- The Snowflake JDBC driver extracts the local file path for PUT/GET commands via
+-- client-side regex matching on the RAW SQL TEXT, BEFORE bind-parameter substitution.
+-- That means PUT commands CANNOT use JDBC bind parameters ("?" / Mendix "{n}").
+-- The file path must be a LITERAL string embedded directly in the SQL text.
+--
+-- IMPORTANT — why the PUT target is a directory, not a full path:
+-- PUT does not support renaming files on upload. It always keeps the local file's
+-- own basename and stages it under the given directory prefix. Including a filename
+-- in the target path causes Snowflake to treat the whole string as a directory and
+-- append the local basename again (nested path bug).
+--
+-- Mendix step configuration ("Execute Query", NOT "Execute Parameterized Query"):
+--   Jdbc url : vf_logistics_portal.GetSnowflakeJdbcUrl()
+--   User name: 'HOACHAU'
+--   Password : (empty)
+--   Sql (Expression, built via string concatenation so $TempPath is a literal
+--        in the final SQL text):
+--
+--     'PUT ''file://' + $TempPath + ''' @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE'
+--
+--   Result object : $NewPutFileResult (an actual PutFileResult instance created
+--                    via a preceding "Create object" activity — required because
+--                    "Execute Query" infers its generic return type from an object
+--                    instance, not a type selector)
+--   Return type   : List of PutFileResult
+--
+-- Resulting literal SQL actually sent to Snowflake (example):
+--   PUT 'file://C:/Users/.../Temp/mendix_upload_1234567890.pdf' @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE
+-- ============================================
+
+PUT 'file://C:/path/to/local/tempfile.pdf' @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+
+-- ============================================
+-- PutFileResult entity — column names returned by PUT when the JDBC connection
+-- uses JDBC_QUERY_RESULT_FORMAT=JSON (as GetSnowflakeJdbcUrl.java does):
+-- all lowercase, snake_case for compound names.
+-- ============================================
+-- Source              -> Source (String)
+-- Target               -> Target (String)
+-- source_size          -> source_size (Long) -- exact lowercase, NOT SourceSize
+-- target_size          -> target_size (Long) -- exact lowercase, NOT TargetSize
+-- source_compression   -> source_compression (String)
+-- target_compression   -> target_compression (String)
+-- Status               -> Status (String)
+-- Message              -> Message (String)
+-- encryption           -> encryption (String) -- exact lowercase

@@ -1,0 +1,198 @@
+# NOTE ON LANGUAGE: All documentation, descriptions and identifiers in this file are in English.
+# The `synonyms` lists intentionally include Vietnamese-language terms in addition to English ones.
+# These are NOT documentation — they are functional query aliases consumed by Cortex Analyst so that
+# a logistics operator in Vietnam can ask questions in their native language
+# (e.g. "số container" -> CONTAINER_NUMBER) and still get the same generated SQL.
+# This makes the agent bilingual for end users, which is a deliberate product feature of the prototype.
+
+name: vf_logistics_bl_view
+description: |
+  Semantic model for VF Logistics Bill of Lading system.
+  Allows querying B/L data, shipment information, compliance, and fees.
+  Bilingual support: dimension synonyms include both English and Vietnamese aliases
+  so natural-language questions can be asked in either language (see language note above).
+
+tables:
+  - name: bill_of_lading
+    base_table:
+      database: MENDIX_APP
+      schema: AGENTS
+      table: BILL_OF_LADING
+    description: Maritime Bill of Lading records with full shipment details
+    dimensions:
+      - name: BL_NUMBER
+        description: Bill of Lading number (unique identifier)
+        synonyms: ["bill of lading", "BL", "B/L", "số vận đơn"]
+        expr: BL_NUMBER
+        data_type: VARCHAR
+      - name: BOOKING_NUMBER
+        description: Booking reference number
+        synonyms: ["booking", "booking ref", "số booking"]
+        expr: BOOKING_NUMBER
+        data_type: VARCHAR
+      - name: VESSEL_NAME
+        description: Name of the vessel/ship
+        synonyms: ["vessel", "ship", "tàu", "tên tàu"]
+        expr: VESSEL_NAME
+        data_type: VARCHAR
+      - name: VOYAGE_NUMBER
+        description: Voyage number
+        synonyms: ["voyage", "chuyến"]
+        expr: VOYAGE_NUMBER
+        data_type: VARCHAR
+      - name: PORT_OF_LOADING
+        description: Port where cargo is loaded
+        synonyms: ["loading port", "cảng xếp hàng", "cảng đi"]
+        expr: PORT_OF_LOADING
+        data_type: VARCHAR
+      - name: PORT_OF_DISCHARGE
+        description: Port where cargo is discharged
+        synonyms: ["discharge port", "destination port", "cảng dỡ hàng", "cảng đến"]
+        expr: PORT_OF_DISCHARGE
+        data_type: VARCHAR
+      - name: SHIPPER_COMPANY
+        description: Shipper/exporter company name
+        synonyms: ["shipper", "exporter", "người gửi", "công ty gửi"]
+        expr: SHIPPER_COMPANY
+        data_type: VARCHAR
+      - name: CONSIGNEE_COMPANY
+        description: Consignee/importer company name
+        synonyms: ["consignee", "importer", "người nhận", "công ty nhận"]
+        expr: CONSIGNEE_COMPANY
+        data_type: VARCHAR
+      - name: CONTAINER_NUMBER
+        description: Container number
+        synonyms: ["container", "container no", "số container"]
+        expr: CONTAINER_NUMBER
+        data_type: VARCHAR
+      - name: CONTAINER_TYPE
+        description: Type and size of container
+        synonyms: ["container type", "loại container"]
+        expr: CONTAINER_TYPE
+        data_type: VARCHAR
+      - name: COMMODITY_DESCRIPTION
+        description: Description of goods/cargo
+        synonyms: ["cargo", "goods", "commodity", "hàng hóa", "mô tả hàng"]
+        expr: COMMODITY_DESCRIPTION
+        data_type: VARCHAR
+      - name: HS_CODE
+        description: Harmonized System code for commodity
+        synonyms: ["hs code", "tariff code", "mã HS"]
+        expr: HS_CODE
+        data_type: VARCHAR
+      - name: FREIGHT_TERMS
+        description: Freight payment terms (prepaid/collect)
+        synonyms: ["freight", "payment terms", "điều kiện cước"]
+        expr: FREIGHT_TERMS
+        data_type: VARCHAR
+      - name: STATUS
+        description: Current document status
+        synonyms: ["status", "trạng thái"]
+        expr: STATUS
+        data_type: VARCHAR
+
+    time_dimensions:
+      - name: ETD
+        description: Estimated Time of Departure
+        synonyms: ["departure date", "ngày khởi hành", "ngày đi"]
+        expr: ETD
+        data_type: DATE
+      - name: ETA
+        description: Estimated Time of Arrival
+        synonyms: ["arrival date", "ngày đến", "ngày tới"]
+        expr: ETA
+        data_type: DATE
+
+    measures:
+      - name: GROSS_WEIGHT_KGS
+        description: Gross weight in kilograms
+        synonyms: ["weight", "gross weight", "trọng lượng"]
+        expr: GROSS_WEIGHT_KGS
+        data_type: NUMBER
+        default_aggregation: sum
+      - name: MEASUREMENT_CBM
+        description: Measurement in cubic meters
+        synonyms: ["volume", "cbm", "thể tích"]
+        expr: MEASUREMENT_CBM
+        data_type: NUMBER
+        default_aggregation: sum
+      - name: NUMBER_OF_PACKAGES
+        description: Number of packages
+        synonyms: ["packages", "quantity", "số kiện"]
+        expr: NUMBER_OF_PACKAGES
+        data_type: NUMBER
+        default_aggregation: sum
+      - name: TOTAL_CHARGES
+        description: Total freight charges amount in USD
+        synonyms: ["total cost", "charges", "tổng chi phí", "cước phí"]
+        expr: TOTAL_CHARGES
+        data_type: NUMBER
+        default_aggregation: sum
+      - name: AI_CONFIDENCE_SCORE
+        description: AI extraction confidence score (0-100)
+        synonyms: ["confidence", "accuracy", "độ chính xác"]
+        expr: AI_CONFIDENCE_SCORE
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: BL_COUNT
+        description: Number of Bill of Lading records
+        synonyms: ["count", "total BLs", "số vận đơn"]
+        expr: "1"
+        data_type: NUMBER
+        default_aggregation: sum
+
+  - name: fee_schedule
+    base_table:
+      database: MENDIX_APP
+      schema: AGENTS
+      table: DD_FEE_SCHEDULE
+    description: Demurrage and detention fee schedule
+    dimensions:
+      - name: FEE_TYPE
+        description: Type of fee (demurrage or detention)
+        synonyms: ["fee", "charge type", "loại phí"]
+        expr: FEE_TYPE
+        data_type: VARCHAR
+      - name: CONTAINER_SIZE
+        description: Container size (20ft, 40ft)
+        synonyms: ["size", "kích thước"]
+        expr: CONTAINER_SIZE
+        data_type: VARCHAR
+      - name: CURRENCY
+        description: Currency of the fee
+        synonyms: ["currency", "tiền tệ"]
+        expr: CURRENCY
+        data_type: VARCHAR
+    measures:
+      - name: FREE_DAYS
+        description: Number of free days before charges apply
+        synonyms: ["free time", "ngày miễn phí"]
+        expr: FREE_DAYS
+        data_type: NUMBER
+        default_aggregation: avg
+      - name: DAILY_RATE
+        description: Daily charge rate after free days
+        synonyms: ["rate", "daily fee", "phí hàng ngày"]
+        expr: DAILY_RATE
+        data_type: NUMBER
+        default_aggregation: avg
+
+verified_queries:
+  - name: all_bl
+    question: "Show all Bill of Lading records"
+    sql: |
+      SELECT BL_NUMBER, VESSEL_NAME, PORT_OF_LOADING, PORT_OF_DISCHARGE,
+             ETD, ETA, SHIPPER_COMPANY, CONSIGNEE_COMPANY, STATUS
+      FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+      ORDER BY ETD DESC
+    verified_by: admin
+    verified_at: 1719100800
+
+  - name: fee_schedule_query
+    question: "What are the demurrage and detention fees?"
+    sql: |
+      SELECT FEE_TYPE, CONTAINER_SIZE, FREE_DAYS, DAILY_RATE, CURRENCY
+      FROM MENDIX_APP.AGENTS.DD_FEE_SCHEDULE
+      ORDER BY FEE_TYPE, CONTAINER_SIZE
+    verified_by: admin
+    verified_at: 1719100800

@@ -1,0 +1,23 @@
+# Binary/large files (submitted separately)
+*.pptx
+
+# Data backups/snapshots (not needed for source review, keep local only)
+data_backup/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets (never commit)
+*.p8
+*.pem
+.env

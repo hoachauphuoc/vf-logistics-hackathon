@@ -1,0 +1,193 @@
+```
+╔════════════════════════════════════════════════════════════════════════════════╗
+║         VF_LOGISTICS_PORTAL - 4-PHASE DATABASE ARCHITECTURE                   ║
+║                   (Open-Closed Principle Applied)                              ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: EXISTING (DO NOT MODIFY) ✋                                        │
+│ Schema: PHASE1_SCHEMA                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────┐                               │
+│  │ ShipmentRecord (EXISTING - READ ONLY)   │                               │
+│  ├─────────────────────────────────────────┤                               │
+│  │ 🔑 ContainerNumber VARCHAR(50) [PK]     │ ◄─────┐                       │
+│  │    BL_Number                            │       │                       │
+│  │    Shipper                              │       │ All phases            │
+│  │    Consignee                            │       │ link here             │
+│  │    Vessel                               │       │ via FK                │
+│  │    ETD (Used by Phase 3 AI)             │       │                       │
+│  │    ETA                                  │       │                       │
+│  └─────────────────────────────────────────┘       │                       │
+│                                                     │                       │
+│  ┌─────────────────────────────────────────┐       │                       │
+│  │ BillOfLading_Doc (EXISTING)             │       │                       │
+│  │ + CORTEX.EXTRACT_ANSWER logic           │       │                       │
+│  │   (100% UNTOUCHED)                      │       │                       │
+│  └─────────────────────────────────────────┘       │                       │
+└─────────────────────────────────────────────────────┼───────────────────────┘
+                                                      │
+                                                      │ FK: ContainerNumber
+                                                      │
+┌─────────────────────────────────────────────────────┼───────────────────────┐
+│ PHASE 2: TRANSPORTATION & GATE MANAGEMENT (NEW) ✅  │                       │
+│ Schema: PHASE2_SCHEMA                               │                       │
+├─────────────────────────────────────────────────────┼───────────────────────┤
+│  ┌─────────────────────────────────────────────────┴──────┐                │
+│  │ Gate_Operations                                         │                │
+│  ├────────────────────────────────────────────────────────┤                │
+│  │ 🔑 GateID VARCHAR(50) [PK]                              │                │
+│  │ 🔗 ContainerNumber → ShipmentRecord [FK] ───────────────┘                │
+│  │    PlateNumber                                          │                │
+│  │    DriverPhone (Zalo integration)                       │                │
+│  │    InTime                                               │                │
+│  │    OutTime                                              │                │
+│  │    AssignedYardLocation ◄─── Updated by Phase 3         │                │
+│  │    Status                                               │                │
+│  └─────────────────────────────────────────────────────────┘                │
+│                                                     │                        │
+│  ┌──────────────────────────────────────────┐      │                        │
+│  │ ShipmentRecord_Transportation_Extension  │      │                        │
+│  │ (Optional 1-to-1 extension)              │      │                        │
+│  │ 🔗 ContainerNumber → ShipmentRecord [FK]  │      │                        │
+│  └──────────────────────────────────────────┘      │                        │
+│                                                     │                        │
+│  📊 Views:                                          │                        │
+│  • V_Gate_Operations_WithShipment                   │                        │
+│  • V_Active_Trucks_In_Yard                          │                        │
+│  • V_Daily_Gate_Statistics                          │                        │
+│                                                     │                        │
+│  ⚙️ Stored Procedures:                              │                        │
+│  • SP_Match_GateOperation_To_Shipment()             │                        │
+│  • SP_Record_GateOut()                              │                        │
+└─────────────────────────────────────────────────────┼────────────────────────┘
+                                                      │
+                                                      │ FK: ContainerNumber
+                                                      │ FK: GateID
+                                                      │
+┌─────────────────────────────────────────────────────┼────────────────────────┐
+│ PHASE 3: WAREHOUSE & YARD MANAGEMENT (NEW) ✅       │                        │
+│ Schema: PHASE3_SCHEMA                               │                        │
+├─────────────────────────────────────────────────────┼────────────────────────┤
+│  ┌─────────────────────────────────────────────────┴──────┐                 │
+│  │ Warehouse_Inventory                                     │                 │
+│  ├─────────────────────────────────────────────────────────┤                 │
+│  │ 🔑 WarehouseID VARCHAR(50) [PK]                         │                 │
+│  │ 🔗 ContainerNumber → ShipmentRecord [FK] ───────────────┘                 │
+│  │ 🔗 GateID → Gate_Operations [FK] ───────────────────────┐                 │
+│  │    WarehouseCode (WH-1 to WH-7)                         │                 │
+│  │    SlotNumber                                           │                 │
+│  │    LoadingPriority ◄─── Calculated from Phase 1 ETD    │                 │
+│  │    RestackingCount                                      │                 │
+│  │    AllocationScore (AI optimization)                    │                 │
+│  │    Status                                               │                 │
+│  └─────────────────────────────────────────────────────────┘                 │
+│         │                                                                     │
+│         │ Writes back to Phase 2                                             │
+│         └──────────────► Gate_Operations.AssignedYardLocation                │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────┐                 │
+│  │ Yard_Configuration (Master data)                        │                 │
+│  ├─────────────────────────────────────────────────────────┤                 │
+│  │ 🔑 SlotID                                               │                 │
+│  │    WarehouseCode                                        │                 │
+│  │    SlotNumber                                           │                 │
+│  │    IsAvailable                                          │                 │
+│  │    CurrentOccupancy                                     │                 │
+│  └─────────────────────────────────────────────────────────┘                 │
+│                                                                               │
+│  📊 Views:                                                                    │
+│  • V_Warehouse_Inventory_Complete (Phase 1+2+3 joined)                       │
+│  • V_Warehouse_Capacity (7 DCs real-time)                                    │
+│  • V_Urgent_Containers                                                        │
+│                                                                               │
+│  ⚙️ Stored Procedures:                                                        │
+│  • SP_Optimize_Yard_Placement() ◄─── Reads Phase 1 ETD                       │
+│  • SP_Assign_Container_To_Slot() ─────► Updates Phase 2                      │
+│  • SP_Calculate_Restacking_Needs()                                            │
+└───────────────────────────────────────────────────────┬───────────────────────┘
+                                                        │
+                                                        │ FK: ContainerNumber
+                                                        │ FK: WarehouseID
+                                                        │
+┌───────────────────────────────────────────────────────┼───────────────────────┐
+│ PHASE 4: SAP ERP INTEGRATION (NEW) ✅                 │                       │
+│ Schema: PHASE4_SCHEMA                                 │                       │
+├───────────────────────────────────────────────────────┼───────────────────────┤
+│  ┌───────────────────────────────────────────────────┴──────┐                │
+│  │ SAP_Sync_Queue                                            │                │
+│  ├───────────────────────────────────────────────────────────┤                │
+│  │ 🔑 SyncID VARCHAR(50) [PK]                                │                │
+│  │ 🔗 ContainerNumber → ShipmentRecord [FK] ─────────────────┘                │
+│  │ 🔗 GateID → Gate_Operations [FK]                          │                │
+│  │ 🔗 WarehouseID → Warehouse_Inventory [FK]                 │                │
+│  │    SyncStatus (PENDING/SUCCESS/FAILED/RETRY)              │                │
+│  │    ErrorMessage                                           │                │
+│  │    AttemptCount                                           │                │
+│  │    MaxRetryAttempts (default: 3)                          │                │
+│  │    NextRetryAt (exponential backoff)                      │                │
+│  │    SAP_MaterialDocument                                   │                │
+│  │    SAP_InvoiceNumber                                      │                │
+│  │    InvoiceAmount                                          │                │
+│  │    IsFullyIntegrated                                      │                │
+│  └───────────────────────────────────────────────────────────┘                │
+│                                                                                │
+│  ┌───────────────────────────────────────────────────────────┐                │
+│  │ SAP_Integration_Log (Audit trail)                         │                │
+│  ├───────────────────────────────────────────────────────────┤                │
+│  │ 🔑 LogID                                                  │                │
+│  │ 🔗 SyncID → SAP_Sync_Queue [FK]                           │                │
+│  │    AttemptNumber                                          │                │
+│  │    RequestPayload (JSON)                                  │                │
+│  │    ResponsePayload (JSON)                                 │                │
+│  └───────────────────────────────────────────────────────────┘                │
+│                                                                                │
+│  📊 Views:                                                                     │
+│  • V_SAP_Sync_Complete (Phase 1+2+3+4 joined)                                 │
+│  • V_SAP_Sync_Dashboard (KPIs, success rate)                                  │
+│  • V_Failed_SAP_Syncs (Alerts)                                                │
+│  • V_End_To_End_Pipeline_Status ◄─── COMPLETE JOURNEY                         │
+│                                                                                │
+│  ⚙️ Stored Procedures:                                                         │
+│  • SP_Enqueue_SAP_Sync() ◄─── Validates Phase 1 container                     │
+│  • SP_Update_SAP_Sync_Status() (Success/Retry logic)                          │
+│  • SP_Get_Pending_SAP_Syncs() (Priority queue)                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                            DATA FLOW SEQUENCE                                  ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+1️⃣  Phase 1: PDF → Cortex AI → ShipmentRecord ✅ (Existing - Working)
+        ↓
+2️⃣  Phase 2: QR Scan → Gate_Operations (validates Phase 1 FK)
+        ↓
+3️⃣  Phase 3: AI reads Phase 1 ETD → Optimize slot → Assign → Update Phase 2
+        ↓
+4️⃣  Phase 4: Enqueue SAP sync → Retry logic → Update status
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         INTEGRATION GUARANTEES                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+✅ All Phase 2-4 tables have FK to ShipmentRecord.ContainerNumber
+✅ Phase 2 cannot insert invalid container (FK constraint enforces)
+✅ Phase 3 reads ETD from Phase 1 (via JOIN, read-only)
+✅ Phase 3 writes AssignedYardLocation back to Phase 2 (via stored proc)
+✅ Phase 4 validates container exists before enqueuing sync
+✅ All views JOIN Phase 1 data (read-only, no modification)
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                      OPEN-CLOSED PRINCIPLE VERIFICATION                        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+❌ Phase 1 modifications:     0
+✅ New schemas created:        3 (PHASE2, PHASE3, PHASE4)
+✅ New tables created:         6
+✅ New views created:          10
+✅ New stored procedures:      8
+✅ FK constraints to Phase 1:  3
+✅ Extension tables:           1 (ShipmentRecord_Transportation_Extension)
+
+🎯 Result: 100% COMPLIANT with Open-Closed Principle
+```

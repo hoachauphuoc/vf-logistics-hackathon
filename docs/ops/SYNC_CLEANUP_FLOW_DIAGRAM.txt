@@ -1,0 +1,251 @@
+```
+╔════════════════════════════════════════════════════════════════════════════════╗
+║       DATA SYNCHRONIZATION & AUTOMATED GARBAGE COLLECTION FLOW                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TASK A: SAP SYNC LOGGING (Real-time from Mendix)                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │ Mendix App   │
+    │ (Java/Micro) │
+    └──────┬───────┘
+           │ After every SAP sync attempt
+           ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ CALL sp_LogSAPSync(                                     │
+    │   'CONT1234567',  -- Container number                   │
+    │   'SUCCESS',       -- Status: SUCCESS or FAILED         │
+    │   NULL            -- Error message (if failed)          │
+    │ )                                                       │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 1. Validate container exists in Phase 1                │
+    │    ShipmentRecord                                      │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 2. Insert log entry into Phase 4                       │
+    │    SAP_Sync_Queue                                      │
+    │    - SyncID: SYNC-20260622143045-CONT1234               │
+    │    - SyncStatus: SUCCESS                               │
+    │    - LastAttempt: CURRENT_TIMESTAMP()                  │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 3. IF STATUS = 'SUCCESS':                              │
+    │    UPDATE ShipmentRecord                               │
+    │    SET Status = 'Synced_To_SAP'                        │
+    │    WHERE ContainerNumber = 'CONT1234567'               │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ ✅ SUCCESS: ShipmentRecord marked as synced            │
+    │ ✅ Log entry created in SAP_Sync_Queue                 │
+    └────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TASK B: FILE CLEANUP (Scheduled Daily + On-Demand)                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌────────────────────────────────────────────────────────┐
+    │ CALL sp_CleanupProcessedFiles()                        │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 1. Find files ready for cleanup:                       │
+    │    SELECT doc.FilePath                                 │
+    │    FROM BillOfLading_Doc doc                           │
+    │    JOIN ShipmentRecord sr                              │
+    │    WHERE sr.Status = 'Synced_To_SAP'                   │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 2. For each file path:                                 │
+    │    - @MY_STAGE/invoices/BL123.pdf                      │
+    │    - @MY_STAGE/invoices/BL456.pdf                      │
+    │    - @MY_STAGE/manifests/MAN789.pdf                    │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 3. Execute REMOVE command for each:                    │
+    │                                                        │
+    │    REMOVE @MY_STAGE/invoices/BL123.pdf; ✅ Deleted     │
+    │    REMOVE @MY_STAGE/invoices/BL456.pdf; ✅ Deleted     │
+    │    REMOVE @MY_STAGE/manifests/MAN789.pdf; ⚠️ Not found │
+    │                                                        │
+    │    (Not found errors are caught and logged)            │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ ✅ SUCCESS: Deleted 2 files, Skipped 1 file            │
+    │ 💰 Storage Savings: ~4 MB freed                        │
+    └────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TASK C: LOG PURGING (Scheduled Daily + On-Demand)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌────────────────────────────────────────────────────────┐
+    │ CALL sp_PurgeOldSyncLogs(30)  -- 30 days retention     │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 1. Calculate cutoff date:                              │
+    │    cutoff_date = CURRENT_DATE - 30 days                │
+    │                = 2026-05-23                            │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 2. Delete old SUCCESS logs:                            │
+    │    DELETE FROM SAP_Sync_Queue                          │
+    │    WHERE SyncStatus = 'SUCCESS'                        │
+    │      AND IsFullyIntegrated = TRUE                      │
+    │      AND CreatedAt < '2026-05-23'                      │
+    │                                                        │
+    │    🔴 FAILED logs are KEPT for debugging               │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ 3. Also clean audit trail:                             │
+    │    DELETE FROM SAP_Integration_Log                     │
+    │    WHERE AttemptStatus = 'SUCCESS'                     │
+    │      AND CreatedAt < '2026-05-23'                      │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ ✅ SUCCESS: Purged 1,523 old sync logs                 │
+    │ 📊 Database Size Reduction: ~50 MB                     │
+    └────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TASK D: SCHEDULED AUTOMATION (Daily at 01:00 AM UTC)                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    🕐 01:00 AM UTC (Daily)
+         │
+         ▼
+    ┌────────────────────────────────────────────────────────┐
+    │ daily_garbage_collection_task                          │
+    │ - Warehouse: COMPUTE_WH                                │
+    │ - Schedule: CRON 0 1 * * * UTC                         │
+    └────────────────┬───────────────────────────────────────┘
+                     │
+                     ├─────────────────────┬──────────────────────┐
+                     ▼                     ▼                      ▼
+    ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────┐
+    │ Step 1:              │  │ Step 2:              │  │ Step 3:          │
+    │ sp_CleanupProcessed  │  │ sp_PurgeOldSyncLogs  │  │ Log execution    │
+    │ Files()              │  │ (30)                 │  │ to TASK_HISTORY  │
+    └──────────┬───────────┘  └──────────┬───────────┘  └────────┬─────────┘
+               │                         │                       │
+               ▼                         ▼                       ▼
+    ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────┐
+    │ 🗑️ Removes PDF files  │  │ 🗑️ Purges old logs    │  │ ✅ Task completed │
+    │ from @MY_STAGE       │  │ from SAP_Sync_Queue  │  │ Next run:        │
+    │                      │  │                      │  │ Tomorrow 01:00 AM│
+    └──────────────────────┘  └──────────────────────┘  └──────────────────┘
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                        COMPLETE FLOW TIMELINE                                  ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+Day 1, 09:00 AM:
+  📄 PDF uploaded to @MY_STAGE → ShipmentRecord created (Status: 'Pending')
+
+Day 1, 09:05 AM:
+  🤖 Mendix extracts PDF via Cortex AI → Status: 'Extracted'
+
+Day 1, 10:00 AM:
+  ✅ Mendix syncs to SAP → Calls sp_LogSAPSync('CONT1234567', 'SUCCESS', NULL)
+     → ShipmentRecord.Status = 'Synced_To_SAP'
+     → Log entry created in SAP_Sync_Queue
+
+Day 2, 01:00 AM: (Next day, scheduled task runs)
+  🗑️ daily_garbage_collection_task executes:
+     → sp_CleanupProcessedFiles() → REMOVES @MY_STAGE/BL1234567.pdf ✅
+     → sp_PurgeOldSyncLogs(30) → Keeps recent log (only 1 day old)
+
+Day 31, 01:00 AM: (30 days later)
+  🗑️ daily_garbage_collection_task executes:
+     → sp_PurgeOldSyncLogs(30) → DELETES log entry from SAP_Sync_Queue ✅
+     → Database cleaned, only recent 30 days kept
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         MONITORING & TROUBLESHOOTING                           ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ REAL-TIME MONITORING                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+SELECT * FROM VF_LOGISTICS_DB.MENDIX_APP.AGENTS.V_Cleanup_Statistics;
+
+┌──────────────────────────┬────────┬────────────────┐
+│ Category                 │ Count  │ OldestDate     │
+├──────────────────────────┼────────┼────────────────┤
+│ Files Ready for Cleanup  │ 47     │ NULL           │  ← PDF files ready to delete
+│ Old Sync Logs (>30 days) │ 1,523  │ 2025-12-15     │  ← Logs to be purged
+│ Total Synced Records     │ 3,891  │ NULL           │  ← Successfully synced
+└──────────────────────────┴────────┴────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ TASK EXECUTION HISTORY                                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+SELECT * FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(
+    SCHEDULED_TIME_RANGE_START => DATEADD(DAY, -7, CURRENT_TIMESTAMP()),
+    TASK_NAME => 'daily_garbage_collection_task'
+)) ORDER BY SCHEDULED_TIME DESC;
+
+┌────────────────────┬─────────────┬──────────────┬───────────────────┐
+│ SCHEDULED_TIME     │ STATE       │ RUN_TIME_SEC │ ERROR_MESSAGE     │
+├────────────────────┼─────────────┼──────────────┼───────────────────┤
+│ 2026-06-22 01:00   │ SUCCEEDED   │ 12.5         │ NULL              │
+│ 2026-06-21 01:00   │ SUCCEEDED   │ 11.2         │ NULL              │
+│ 2026-06-20 01:00   │ SUCCEEDED   │ 13.8         │ NULL              │
+└────────────────────┴─────────────┴──────────────┴───────────────────┘
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                           COST SAVINGS SUMMARY                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+WITHOUT AUTOMATION:
+  📊 1,000 shipments/day × 365 days × 2 MB/file = 730 GB/year
+  💰 Snowflake storage: $40/TB/month → $348/year
+
+WITH AUTOMATION:
+  📊 1,000 shipments/day × 1 day retention × 2 MB/file = 2 GB
+  💰 Snowflake storage: $40/TB/month → $0.96/year
+  
+  💵 SAVINGS: $347/year (99.7% reduction)
+
+COMPUTE COSTS:
+  🖥️ Task runs daily for ~15 seconds on COMPUTE_WH
+  💰 Cost: ~$0.01/run × 365 = $3.65/year
+  
+  ✅ NET SAVINGS: $343.35/year per 1,000 shipments/day
+
+For 10,000 shipments/day:
+  💰 NET SAVINGS: $3,433.50/year ⚡
+```
