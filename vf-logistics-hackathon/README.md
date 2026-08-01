@@ -78,20 +78,40 @@ Maritime freight fraud (undervalued/overvalued cargo, shell-company shippers, sa
 
 ## 4. Run the Workflow — Executed Through the CLI
 
-### Option A — Single command (fastest live demo)
+### Option A — Document to decision, from raw PDFs (the full story, one command)
+
+Upload as many Bills of Lading as you like in a single command, then take them all the way to an autonomous decision with one more:
+
+```bash
+snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection ygvordh-ia82097
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection ygvordh-ia82097
+```
+
+`WORKFLOW_INGEST_AND_DECIDE` chains three stages and logs each one:
+`PROCESS_BL_DOCUMENTS` (OCR + AI extraction of every new PDF) → `SYNC_EXTRACTED_TO_BILL_OF_LADING` (promote the documents into the operational table) → `WORKFLOW_FULL_PIPELINE_V2` (detect → investigate → screen → AI-decided remediation → ERP posting).
+
+The **Mendix chat panel and Python/Snowpark call this same procedure**, so every interface executes identical logic.
+
+Fully hands-off operation is one statement away — a stream on the stage already feeds a task:
+```sql
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;   -- fires on new files, every 5 min
+```
+It ships **suspended** so an idle trial account is not billed.
+
+### Option B — Fraud pipeline only (fastest live demo, no upload needed)
 ```bash
 snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ygvordh-ia82097
 ```
 
-### Option B — Full demo script (seed data + run + show audit trail)
+### Option C — Full demo script (seed data + run + show audit trail)
 ```bash
 snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ygvordh-ia82097
 ```
 
-### Option C — Natural language via Cortex Agent (CoCo CLI / Snowflake Intelligence)
+### Option D — Natural language via Cortex Agent (CoCo CLI / Snowflake Intelligence)
 > "Scan for fraud and handle any issues autonomously"
 
-### Option D — From Python/Snowpark
+### Option E — From Python/Snowpark
 ```bash
 python python/snowpark_risk_scoring.py --connection ygvordh-ia82097 --run-workflow
 ```
@@ -104,6 +124,19 @@ python python/snowpark_risk_scoring.py --connection ygvordh-ia82097 --run-workfl
  "shipper_screened":"SUSPICIOUS TRADING CO",
  "execution_time_ms":13392,"audit_trail":"WORKFLOW_AUDIT_LOG"}
 ```
+
+Trace a single PDF from file to decision:
+```sql
+SELECT e.FILE_NAME, e.CONFIDENCE_SCORE, e.ALERT,
+       b.BL_NUMBER, b.STATUS,
+       a.ALERT_TYPE, a.AI_RECOMMENDED_ACTION, a.AI_DECISION_REASON
+FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED e
+JOIN MENDIX_APP.AGENTS.BILL_OF_LADING b ON b.BL_ID = e.BL_ID
+LEFT JOIN MENDIX_APP.AGENTS.FRAUD_ALERT a ON a.BL_ID = b.BL_ID
+ORDER BY e.DOC_ID DESC;
+```
+A clean document is promoted and approved with no alert; a document whose extraction could not be validated raises a `DOCUMENT_QUALITY` alert that the AI then reasons over and escalates.
+
 
 The `ai_decision` field is produced by the model in step 2 and is what step 4 executes. To inspect every decision the AI has made, with its reasoning:
 

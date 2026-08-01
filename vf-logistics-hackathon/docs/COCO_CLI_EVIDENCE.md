@@ -135,7 +135,66 @@ ORDER BY EXECUTED_AT DESC LIMIT 5;
 
 ---
 
-### 2.5 End-to-end orchestrator validation with live timing
+### 2.5 Found that the two halves of the system were never connected
+
+**How it surfaced:** the question *"can I upload several PDFs in one CLI command and have the pipeline run automatically?"* was asked of CoCo CLI. Answering it honestly required checking, not assuming — and the check failed:
+
+```sql
+SELECT
+  (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED) AS extracted_rows,   -- 13
+  (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING)           AS bl_rows,          -- 10,010
+  (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING b
+    WHERE EXISTS (SELECT 1 FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED e
+                  WHERE e.BL_NUMBER = b.BL_NUMBER))                 AS matched;          -- 0
+```
+
+Zero overlap. Document intelligence wrote to `BILL_OF_LADING_EXTRACTED`; the fraud agent scanned `BILL_OF_LADING`; nothing bridged them. **An uploaded PDF could never reach a decision**, even though the presentation described the flow as "document to decision".
+
+A second query showed it was worse than a missing join — the extraction never captured the fields the detection rules depend on:
+
+| Detection rule | Threshold | Reality in the extracted data |
+|---|---|---|
+| `HIGH_VALUE_ANOMALY` | `TOTAL_CHARGES > 50000` | `FREIGHT_CHARGES` was **NULL in all 13 rows** — the prompt never asked for it |
+| `SUSPICIOUS_PARTY` | shipper/consignee name match | `SHIPPER_NAME` / `CONSIGNEE_NAME` **empty in all 13 rows** — also absent from the prompt |
+| `WEIGHT_ANOMALY` | `GROSS_WEIGHT_KGS > 30000` | maximum observed 25,200 kg |
+
+**CoCo CLI actions:**
+1. Extended the `PROCESS_BL_DOCUMENTS` extraction prompt to capture shipper, consignee, carrier, notify party, ports, packages and freight charges — columns that already existed on the table but were never populated.
+2. Wrote `SYNC_EXTRACTED_TO_BILL_OF_LADING` to promote documents into the operational table, carrying the extraction confidence and alert text across.
+3. Added a `DOCUMENT_QUALITY` rule to `WORKFLOW_DETECT_AND_ACT`: an extraction that could not be validated is itself a compliance risk, so it raises an alert (HIGH below 50/100) and is reasoned over by the same investigation skill.
+4. Extended the investigation evidence pack with document provenance, and gave the rubric an explicit branch: escalate when extraction confidence is below 60/100 because the underlying data cannot be trusted enough to clear or block automatically.
+5. Wrapped the three stages in `WORKFLOW_INGEST_AND_DECIDE` and retargeted `TASK_PROCESS_NEW_BL` at it, so the CLI, the Mendix chat panel, Python/Snowpark and the autonomous stream-driven task all execute identical logic.
+
+**Two further defects were found only by executing the result, not by reading it:**
+
+- *Silent no-op.* The first run reported `Processed: 0`. A stage directory table does not see files added by `PUT` until it is refreshed, so a batch upload followed immediately by processing did nothing at all — the exact demo sequence a judge would try. Fixed with `ALTER STAGE ... REFRESH` at the top of the procedure.
+- *Truncation failure.* The second run aborted: `String 'CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)' is too long and would be truncated`. The model returns full port names; `PORT_OF_*_LOCODE` holds 10 characters. Fixed by extracting the UN/LOCODE from the parentheses and truncating every text column to its real width.
+
+**Verified result — a real PDF now reaches a real decision:**
+
+| PDF uploaded | Extraction confidence | Extraction validation | Promoted BL | Alert raised | AI decision |
+|---|---|---|---|---|---|
+| `BATCH_A_VALID.pdf` | 100/100 | No anomalies detected | `MAEU2026001`, APPROVED | none (correct — nothing to decide) | — |
+| `BATCH_B_ERROR.pdf` | 25/100 | ContainerNumber; VesselName; GrossWeightKg | `EGLV2026015`, Pending_Review | `DOCUMENT_QUALITY` / HIGH | **ESCALATE** — "Extraction confidence below 60/100 and failed validation, underlying data cannot be trusted." |
+
+**How a judge verifies:**
+```sql
+PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
+CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();
+
+SELECT e.FILE_NAME, e.CONFIDENCE_SCORE, e.ALERT, b.BL_NUMBER, b.STATUS,
+       a.ALERT_TYPE, a.AI_RECOMMENDED_ACTION, a.AI_DECISION_REASON
+FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED e
+JOIN MENDIX_APP.AGENTS.BILL_OF_LADING b ON b.BL_ID = e.BL_ID
+LEFT JOIN MENDIX_APP.AGENTS.FRAUD_ALERT a ON a.BL_ID = b.BL_ID
+ORDER BY e.DOC_ID DESC;
+```
+
+**Why this matters:** the gap was invisible in the code and in the project's own documentation — both halves worked perfectly in isolation. It was only exposed by asking what would happen to a file end to end, then running it. This is the single most consequential fix in the project.
+
+---
+
+### 2.6 End-to-end orchestrator validation with live timing
 
 **CoCo CLI actions:** executed the full orchestrator and read back the audit trail it produced, confirming all five steps and the recorded execution time.
 
@@ -150,7 +209,7 @@ Steps confirmed in order: `DETECT_ANOMALIES` → `AI_INVESTIGATE` → `SANCTIONS
 
 ---
 
-### 2.6 Cost control and account hygiene through the CLI
+### 2.7 Cost control and account hygiene through the CLI
 
 Because the prototype runs on a $400 trial credit, CoCo CLI was used to audit and shut down background compute between working sessions:
 
@@ -164,7 +223,7 @@ All seven scheduled tasks (`TASK_FRAUD_SCAN`, `TASK_PROCESS_NEW_BL`, `TASK_AI_EX
 
 ---
 
-### 2.7 Front-end integration debugging
+### 2.8 Front-end integration debugging
 
 CoCo CLI was also used on the client side of the prototype:
 
@@ -182,8 +241,9 @@ CoCo CLI was also used on the client side of the prototype:
 | Root-cause diagnosis of a platform state bug | Cortex Search Service suspend/resume behaviour (§2.2) |
 | AI prompt engineering with a real verification loop | `ALERT` / `ALERT_RESPONSE` columns matching rule-derived `STATUS` (§2.3) |
 | **Finding a design flaw by reading deployed DDL, then proving the fix changed real outcomes** | **AI-decided remediation — `V_AI_DECISIONS` shows BLOCK vs CLEAR (§2.4)** |
-| End-to-end workflow execution + audit verification | `WORKFLOW_AUDIT_LOG` (§2.5) |
-| Cost/operations management on a trial account | Suspended tasks and search service (§2.6) |
-| Full-stack debugging across Snowflake and the front end | Mendix integration and security fix (§2.7) |
+| **Discovering that two working halves were never connected, and closing the gap** | **`WORKFLOW_INGEST_AND_DECIDE` — an uploaded PDF now reaches an AI decision (§2.5)** |
+| End-to-end workflow execution + audit verification | `WORKFLOW_AUDIT_LOG` (§2.6) |
+| Cost/operations management on a trial account | Suspended tasks and search service (§2.7) |
+| Full-stack debugging across Snowflake and the front end | Mendix integration and security fix (§2.8) |
 
 Every SQL statement quoted above is reproducible in the submitted Snowflake account using the read-only judge credentials documented in the submission form.
