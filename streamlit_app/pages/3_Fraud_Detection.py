@@ -1,20 +1,13 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
-from i18n import rename_columns
+from i18n import init_language, rename_columns
 
 st.set_page_config(page_title="Fraud Detection", page_icon="🛡️", layout="wide")
 session = get_active_session()
-
-if "lang" not in st.session_state:
-    st.session_state.lang = "EN"
-with st.sidebar:
-    lang = st.selectbox("🌐 Language", ["EN", "VN", "JA"], index=["EN","VN","JA"].index(st.session_state.lang), key="lang_fraud")
-    if lang != st.session_state.lang:
-        st.session_state.lang = lang
-        st.rerun()
+t = init_language()
 lang = st.session_state.lang
 
-st.title("🛡️ Fraud Detection Center" if lang == "EN" else "🛡️ Trung tâm phát hiện gian lận" if lang == "VN" else "🛡️ 不正検知センター")
+st.title(t["fraud_center_title"])
 
 # KPIs
 try:
@@ -26,18 +19,18 @@ try:
             SUM(CASE WHEN STATUS = 'OPEN' THEN 1 ELSE 0 END) as OPEN_ALERTS
         FROM FRAUD_ALERT
     """).collect()[0]
-    
+
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        st.metric("🚨 Total Alerts", fraud_kpis["TOTAL_ALERTS"])
+        st.metric(t["fraud_alerts"], fraud_kpis["TOTAL_ALERTS"])
     with k2:
-        st.metric("🔴 High Severity", fraud_kpis["HIGH_SEV"])
+        st.metric(t["high_severity"], fraud_kpis["HIGH_SEV"])
     with k3:
-        st.metric("🟡 Medium", fraud_kpis["MED_SEV"])
+        st.metric(t["medium_severity"], fraud_kpis["MED_SEV"])
     with k4:
-        st.metric("📂 Open", fraud_kpis["OPEN_ALERTS"])
+        st.metric(t["total_open"], fraud_kpis["OPEN_ALERTS"])
 except Exception as e:
-    st.warning(f"Could not load fraud KPIs: {str(e)[:80]}")
+    st.warning(t["kpi_load_error"].format(err=str(e)[:80]))
 
 st.divider()
 
@@ -45,72 +38,67 @@ st.divider()
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("🔍 Run Fraud Scan")
-    if st.button("🚀 Scan for Duplicates", use_container_width=True):
-        with st.spinner("Scanning..."):
+    st.subheader(t["run_fraud_scan"])
+    if st.button(t["scan_for_duplicates"], use_container_width=True):
+        with st.spinner(t["scanning"]):
             try:
                 result = session.sql("CALL DETECT_DUPLICATES(NULL)").collect()[0][0]
-                st.success(f"Scan complete: {result}")
+                st.success(t["scan_complete_msg"].format(result=result))
             except Exception as e:
-                st.error(f"Scan error: {str(e)[:100]}")
+                st.error(t["scan_error_msg"].format(err=str(e)[:100]))
 
 with col2:
-    st.subheader("📄 Ingest & Decide")
-    st.caption("Processes every new PDF on the stage, promotes it, then decides.")
-    if st.button("📥 Document → Decision", use_container_width=True):
-        with st.spinner("Extract → promote → detect → investigate → screen → decide..."):
+    st.subheader(t["ingest_decide"])
+    st.caption(t["ingest_decide_caption"])
+    if st.button(t["doc_to_decision"], use_container_width=True):
+        with st.spinner(t["ingest_spinner"]):
             try:
                 import json
                 raw = session.sql("CALL WORKFLOW_INGEST_AND_DECIDE()").collect()[0][0]
-                st.success("Ingest and decide completed")
+                st.success(t["ingest_success"])
                 try:
                     parsed = json.loads(raw)
-                    st.caption(f"Extraction: {parsed.get('extraction', 'n/a')}")
+                    st.caption(t["extraction_label"].format(v=parsed.get('extraction', 'n/a')))
                     promo = parsed.get("promotion", {})
                     if isinstance(promo, dict):
-                        st.caption(f"Documents promoted: {promo.get('documents_promoted', '?')}")
+                        st.caption(t["docs_promoted_label"].format(v=promo.get('documents_promoted', '?')))
                     pipe = parsed.get("pipeline", {})
                     if isinstance(pipe, dict):
-                        st.metric("🤖 AI decision", pipe.get("ai_decision", "n/a"))
+                        st.metric(t["ai_decision_metric"], pipe.get("ai_decision", "n/a"))
                         if pipe.get("ai_reason"):
-                            st.caption(f"Reason: {pipe['ai_reason']}")
-                    st.caption(f"Total time: {parsed.get('total_execution_time_ms', '?')} ms")
+                            st.caption(t["reason_label"].format(v=pipe['ai_reason']))
+                    st.caption(t["total_time_label"].format(v=parsed.get('total_execution_time_ms', '?')))
                 except Exception:
                     st.code(raw, language="json")
             except Exception as e:
-                st.error(f"Ingest error: {str(e)[:150]}")
+                st.error(t["ingest_error"].format(err=str(e)[:150]))
 
 with col3:
-    st.subheader("⚡ Pipeline Demo")
-    if st.button("🔗 Run Full Pipeline", type="primary", use_container_width=True):
-        with st.spinner("Detect → AI Investigate → Sanctions Screen → AI-decided Remediation → SAP Post..."):
+    st.subheader(t["pipeline_demo"])
+    if st.button(t["run_full_pipeline"], type="primary", use_container_width=True):
+        with st.spinner(t["pipeline_spinner"]):
             try:
                 import json
                 raw = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
-                st.success("Pipeline completed")
+                st.success(t["pipeline_success"])
                 try:
                     parsed = json.loads(raw)
                     decision = parsed.get("ai_decision", "n/a")
                     reason = parsed.get("ai_reason", "")
-                    st.metric("🤖 Autonomous AI decision", decision)
+                    st.metric(t["autonomous_decision_metric"], decision)
                     if reason:
-                        st.caption(f"Reason: {reason}")
-                    st.caption(f"Execution time: {parsed.get('execution_time_ms', '?')} ms — audit trail: WORKFLOW_AUDIT_LOG")
+                        st.caption(t["reason_label"].format(v=reason))
+                    st.caption(t["execution_time_label"].format(ms=parsed.get('execution_time_ms', '?')))
                 except Exception:
                     st.code(raw, language="json")
             except Exception as e:
-                st.error(f"Pipeline error: {str(e)[:150]}")
+                st.error(t["pipeline_error"].format(err=str(e)[:150]))
 
 st.divider()
 
 # Autonomous AI decisions with explanations
-st.subheader("🧠 Autonomous AI Decisions — BLOCK / ESCALATE / CLEAR with reasoning")
-st.caption(
-    "Each row is an alert the AI reasoned over using a quantitative evidence pack "
-    "(shipment cost-per-kg vs. the peer median across 10,000+ shipments, plus a live "
-    "sanctions-list match count from Snowflake Marketplace data). The action shown was "
-    "chosen by the model and then executed automatically — it is not a hardcoded outcome."
-)
+st.subheader(t["ai_decisions_header"])
+st.caption(t["ai_decisions_caption"])
 try:
     decisions = session.sql("""
         SELECT ALERT_ID, SEVERITY, ALERT_TYPE, BL_NUMBER, SHIPPER_NAME,
@@ -123,21 +111,21 @@ try:
     """).to_pandas()
 
     if decisions.empty:
-        st.info("No AI decisions recorded yet. Click 'Run Full Pipeline' above to generate one.")
+        st.info(t["no_ai_decisions"])
     else:
         d1, d2, d3 = st.columns(3)
         with d1:
-            st.metric("🛑 Blocked", int((decisions["AI_DECISION"] == "BLOCK").sum()))
+            st.metric(t["blocked_metric"], int((decisions["AI_DECISION"] == "BLOCK").sum()))
         with d2:
-            st.metric("⬆️ Escalated", int((decisions["AI_DECISION"] == "ESCALATE").sum()))
+            st.metric(t["escalated_metric"], int((decisions["AI_DECISION"] == "ESCALATE").sum()))
         with d3:
-            st.metric("✅ Cleared", int((decisions["AI_DECISION"] == "CLEAR").sum()))
+            st.metric(t["cleared_metric"], int((decisions["AI_DECISION"] == "CLEAR").sum()))
 
         st.dataframe(decisions, use_container_width=True, height=320)
 
-        st.markdown("**Full AI risk assessment**")
+        st.markdown(t["full_assessment_label"])
         selected = st.selectbox(
-            "Select an alert to read the complete reasoning the model produced",
+            t["select_alert_label"],
             decisions["ALERT_ID"].tolist(),
             format_func=lambda a: f"Alert #{a} — {decisions.loc[decisions['ALERT_ID'] == a, 'AI_DECISION'].iloc[0]}",
         )
@@ -148,16 +136,16 @@ try:
             ).collect()
             if detail:
                 row = detail[0]
-                st.info(f"**Decision: {row['AI_DECISION']}** — {row['AI_DECISION_REASON']}")
+                st.info(t["decision_prefix"].format(decision=row['AI_DECISION'], reason=row['AI_DECISION_REASON']))
                 st.text(row["AI_RISK_ASSESSMENT"] or "No assessment text stored.")
-                st.caption(f"Applied action recorded in the alert: {row['RESOLUTION_NOTES']}")
+                st.caption(t["applied_action_label"].format(v=row['RESOLUTION_NOTES']))
 except Exception as e:
-    st.warning(f"Could not load AI decisions: {str(e)[:120]}")
+    st.warning(t["ai_decisions_load_error"].format(err=str(e)[:120]))
 
 st.divider()
 
 # Alert History
-st.subheader("📋 Fraud Alert History")
+st.subheader(t["alert_history_header"])
 try:
     alerts = session.sql("""
         SELECT ALERT_ID, ALERT_TYPE, SEVERITY, STATUS, 
@@ -167,19 +155,19 @@ try:
         ORDER BY COALESCE(DETECTED_AT, CREATED_AT) DESC NULLS LAST
         LIMIT 50
     """).to_pandas()
-    
+
     if not alerts.empty:
         st.dataframe(rename_columns(alerts, lang), use_container_width=True, height=400)
     else:
-        st.info("No fraud alerts yet. Run a scan or pipeline demo to generate alerts.")
+        st.info(t["no_alerts_yet"])
 except Exception as e:
-    st.warning(f"Could not load alerts: {str(e)[:80]}")
+    st.warning(t["alerts_load_error"].format(err=str(e)[:80]))
 
 # Alert Distribution Chart
 st.divider()
 chart_col1, chart_col2 = st.columns(2)
 with chart_col1:
-    st.subheader("📊 Alerts by Type")
+    st.subheader(t["alerts_by_type"])
     try:
         type_data = session.sql("""
             SELECT ALERT_TYPE, COUNT(*) as COUNT 
@@ -187,11 +175,11 @@ with chart_col1:
         """).to_pandas()
         if not type_data.empty:
             st.bar_chart(type_data.set_index("ALERT_TYPE")["COUNT"])
-    except:
-        st.info("No data for chart")
+    except Exception:
+        st.info(t["no_data"])
 
 with chart_col2:
-    st.subheader("📊 Alerts by Severity")
+    st.subheader(t["alerts_by_severity"])
     try:
         sev_data = session.sql("""
             SELECT SEVERITY, COUNT(*) as COUNT 
@@ -199,5 +187,5 @@ with chart_col2:
         """).to_pandas()
         if not sev_data.empty:
             st.bar_chart(sev_data.set_index("SEVERITY")["COUNT"])
-    except:
-        st.info("No data for chart")
+    except Exception:
+        st.info(t["no_data"])

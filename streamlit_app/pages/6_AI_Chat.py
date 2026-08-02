@@ -1,18 +1,19 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
+from i18n import init_language
 
 st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
 session = get_active_session()
+t = init_language()
+lang = st.session_state.lang
 
-lang = st.session_state.get("lang", "EN")
-
-st.title("💬 VF Logistics AI Assistant" if lang == "EN" else "💬 Trợ lý AI VF Logistics" if lang == "VN" else "💬 VF Logistics AIアシスタント")
-st.caption("Ask about shipments, compliance, fraud — powered by Cortex AI" if lang == "EN" else "Hỏi về lô hàng, tuân thủ, gian lận — Cortex AI" if lang == "VN" else "出荷・コンプライアンス・不正について質問")
+st.title(t["ai_chat_title"])
+st.caption(t["ai_chat_caption"])
 
 # Read AI model
 try:
     ai_model = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]["CONFIG_VALUE"]
-except:
+except Exception:
     ai_model = "mistral-large2"
 
 # Initialize chat history
@@ -29,13 +30,14 @@ def safe_rerun():
     elif hasattr(st, "experimental_rerun"):
         st.experimental_rerun()
 
+
 def generate_response(question):
     try:
         # Step 1: Determine if this is a data question or conversational
         classify_prompt = f"Classify this user message as either DATA_QUERY (needs SQL to answer from a database about shipments, carriers, ports, freight, fraud alerts) or CONVERSATION (greeting, chitchat, general question, help request). Return ONLY one word: DATA_QUERY or CONVERSATION. Message: {question}"
         msg_type = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, classify_prompt]).collect()[0][0]
         msg_type = str(msg_type).strip().upper()
-        
+
         # Step 2: If conversational, respond directly
         if "CONVERSATION" in msg_type or "DATA" not in msg_type:
             chat_prompt = f"""You are VF Logistics AI Assistant - a maritime shipping intelligence system.
@@ -46,7 +48,7 @@ Be friendly, concise, and helpful. If the user asks what you can do, list your c
 User: {question}"""
             answer = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, chat_prompt]).collect()[0][0]
             return str(answer), None
-        
+
         # Step 3: For data questions, generate SQL
         prompt = f"""You are a SQL expert for maritime logistics on Snowflake.
 Write a SELECT query to answer this question. Available tables:
@@ -87,7 +89,7 @@ Question: {question}"""
         allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
         import re
         referenced_tables = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
-        table_names = {t.split(".")[-1] for t in referenced_tables}
+        table_names = {t2.split(".")[-1] for t2 in referenced_tables}
         if not table_names or not table_names.issubset(allowed_tables):
             return "I can only query BILL_OF_LADING and FRAUD_ALERT for safety.", None
 
@@ -126,34 +128,28 @@ Question: {question}"""
 
 # Sidebar quick questions
 with st.sidebar:
-    st.subheader("⚡ Quick Questions")
-    questions_list = [
-        "How many shipments are pending review?",
-        "Top 5 carriers by total charges",
-        "Show high severity fraud alerts",
-        "Average charges by status",
-        "Total weight shipped this month"
-    ]
+    st.subheader(t["quick_questions"])
+    questions_list = [t["q_pending"], t["q_top_carriers"], t["q_high_severity"], t["q_avg_charges"], t["q_total_weight"]]
     for q in questions_list:
         if st.button(q, key=f"q_{hash(q)}"):
             st.session_state.pending_question = q
 
     st.divider()
-    if st.button("🗑️ Clear Chat"):
+    if st.button(t["clear_chat"]):
         st.session_state.messages = []
         if "pending_question" in st.session_state:
             del st.session_state.pending_question
         safe_rerun()
-    st.caption(f"Model: {ai_model}")
+    st.caption(t["model_label"].format(model=ai_model))
 
 # Display existing messages
 for msg in st.session_state.messages:
     if msg["role"] == "user":
-        st.markdown(f"**🧑 You:** {msg['content']}")
+        st.markdown(t["you_label"].format(v=msg['content']))
     else:
-        st.markdown(f"**🤖 Assistant:** {msg['content']}")
+        st.markdown(t["assistant_label"].format(v=msg['content']))
         if msg.get("sql"):
-            with st.expander("🔍 SQL Generated"):
+            with st.expander(t["sql_generated"]):
                 st.code(msg["sql"], language="sql")
     st.divider()
 
@@ -162,20 +158,20 @@ st.markdown("---")
 col1, col2 = st.columns([5, 1])
 with col1:
     user_input = st.text_input(
-        "Ask a question" if lang == "EN" else "Đặt câu hỏi",
-        placeholder="e.g. How many shipments are pending?" if lang == "EN" else "VD: Bao nhiêu lô hàng đang chờ?",
+        t["ask_question"],
+        placeholder=t["ask_question_placeholder"],
         key="chat_input",
         value=st.session_state.get("pending_question", ""),
         label_visibility="collapsed"
     )
 with col2:
-    send_clicked = st.button("Send 📨", type="primary", use_container_width=True)
+    send_clicked = st.button(t["send"], type="primary", use_container_width=True)
 
 # Process input
 if send_clicked and user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    with st.spinner("🤖 Thinking..."):
+    with st.spinner(t["thinking"]):
         answer, sql = generate_response(user_input)
 
     st.session_state.messages.append({"role": "assistant", "content": answer, "sql": sql})
@@ -187,7 +183,7 @@ if send_clicked and user_input:
             INSERT INTO CHAT_SESSION (USER_ID, SESSION_START, MESSAGE_COUNT, LANGUAGE)
             SELECT CURRENT_USER(), CURRENT_TIMESTAMP(), ?, ?
         """, params=[msg_count, lang]).collect()
-    except:
+    except Exception:
         pass
 
     # Clear pending question
@@ -201,8 +197,8 @@ if not st.session_state.messages:
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.info("📦 **Shipments**\n\nStatus, carriers, ports, weight, charges")
+        st.info(t["welcome_shipments"])
     with c2:
-        st.info("🛡️ **Fraud & Compliance**\n\nAlerts, sanctions, anomalies")
+        st.info(t["welcome_fraud"])
     with c3:
-        st.info("📊 **Analytics**\n\nRevenue, KPIs, trends")
+        st.info(t["welcome_analytics"])
