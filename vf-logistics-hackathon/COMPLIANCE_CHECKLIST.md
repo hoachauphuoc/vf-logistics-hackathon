@@ -10,8 +10,8 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 |-------------|--------|-------|
 | (a) Complete profile (name, email, phone, country) | ⬜ Not confirmed | Must register on Contest Site before 08/02/2026 |
 | (b) The Idea | ✅ Yes | Intelligent Workflow Automation Agent for logistics fraud detection |
-| (c) The Prototype | ✅ Yes | VF Logistics Portal (Mendix, public sandbox at https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive) + Snowflake backend working end-to-end |
-| (d) Presentation materials + source code link | ✅ Yes | Source code: https://github.com/hoachauphuoc/vf-logistics-hackathon — README, presentation outline, voice-over script, CoCo CLI evidence and test report all included |
+| (c) The Prototype | ✅ Yes | VF Logistics Portal (Mendix public prototype at https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive) + Snowflake backend working end-to-end |
+| (d) Presentation materials + source code link | ✅ Yes | Source code: https://github.com/hoachauphuoc/vf-logistics-hackathon — README, presentation outline, CoCo CLI evidence and test report all included; recording scripts are intentionally kept local because judges do not need them |
 
 ## 2. Section 4.2 — Language
 
@@ -32,7 +32,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 
 | Dataset | Source | License | Notes |
 |---------|--------|---------|-------|
-| BILL_OF_LADING (10,009 rows) | Self-generated synthetic data | N/A (self-created) | Maritime logistics simulation data |
+| BILL_OF_LADING (10,025 rows) | Self-generated synthetic data | N/A (self-created) | Maritime logistics simulation data |
 | Snowflake Public Data (Free) — `INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX` | Snowflake Marketplace (free listing `GZTSZ290BV255`) | Free, Snowflake-provided | Used for sanctions screening — meets "Marketplace" criterion in Section 9 |
 | `V_EXCHANGE_RATES` | Snowflake-hosted reference data in account | Snowflake-provided | Used in the Streamlit monitoring panel |
 | HS_CODE_REFERENCE | Self-generated (based on public HS Code standard) | Public reference data | |
@@ -42,9 +42,9 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | Requirement | Status | Action |
 |-------------|--------|--------|
 | (a) Presentation deck (PPT) | 🟡 Outline ready | Content updated; still needs final PPT export |
-| (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, 69 files, includes the submission docs, agent-skill SQL, Streamlit app source, Snowpark script and Mendix Java integration |
-| (c) Live demo (if reaching Finals) | ✅ Ready | `CALL WORKFLOW_FULL_PIPELINE_V2()` runs successfully via CLI, execution ~6.3s |
-| (d) Technical readiness | ✅ | Streamlit + Mendix + Cortex Agent tested and working; dashboard charts/UI validated on 2026-07-27 |
+| (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, includes the submission docs, agent-skill SQL, Streamlit app source, Snowpark script and Mendix Java integration |
+| (c) Live demo (if reaching Finals) | ✅ Ready | `CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')` runs successfully via Cortex Code / SQL CLI, typically ~4-8s depending on warm state |
+| (d) Technical readiness | ✅ | Mendix public prototype, Streamlit monitoring UI, and CLI-driven backend were revalidated after the 2026-08-01 account migration, grants fix, and regression-test hardening |
 
 ## 5. Section 5 — Entry Warranties (⚠️ CRITICAL)
 
@@ -113,7 +113,7 @@ props.put("password", password);
 | 10 | **Public MVP URL** | ✅ https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously) |
 | 11 | **Registration** (§4.1a) | ✅ team "Sora", 2 members, confirmed on the contest portal |
 | 12 | **Validation report** | ✅ `../docs/reference/TEST_REPORT_FINAL_2026-08-01.md` |
-| 13 | **Judge read-only access** | ✅ `HACKATHON_JUDGE_ROLE` has SELECT on every referenced object incl. `V_AI_DECISIONS` |
+| 13 | **Judge read-only access** | ✅ Optional `HACKATHON_JUDGE` account exists for Streamlit review, but it is positioned as bonus access rather than the primary prototype entry point; the primary low-friction reviewer path remains the public Mendix prototype + demo video |
 | 14 | **Submit through the portal Submissions tab** | ⬜ the only remaining action |
 
 **Deadline note:** the Terms & Conditions state the Submission Period closes **2026-08-02 23:59 IST**, while the contest portal countdown showed a later date. Treat 2026-08-02 as the binding deadline.

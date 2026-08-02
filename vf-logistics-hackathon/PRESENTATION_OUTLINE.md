@@ -16,7 +16,7 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 - Participant: Hoa Chau Phuoc (HOACHAU)
 
 **On-slide (hook):**
-- *"From document and shipment data to autonomous action in under 10 seconds — executed through the CLI."*
+- *"From scanned document and shipment data to autonomous action in under 10 seconds — executed inside Snowflake and triggered from the CLI."*
 
 **Speaker notes:**
 - "This demo shows an autonomous compliance workflow for maritime logistics: detect anomalies, investigate with AI, screen sanctions using live Marketplace data, then take action with a full audit trail."
@@ -40,10 +40,10 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 **On-slide (bullets):**
 - An agentic system that **reasons over enterprise data**, not just queries it
 - 3 modular skills chained into one autonomous workflow
-- One workflow, multiple interfaces: **CLI**, natural language (Cortex Agent), Python/Snowpark
+- One workflow, multiple interfaces: **CLI / Cortex Code**, natural language (Cortex Agent), Python/Snowpark, Mendix operator UI
 
 **Speaker notes:**
-- "For this hackathon, the centerpiece is CLI execution: one command triggers the full workflow end-to-end."
+- "For this hackathon, the centerpiece is CLI execution: one command triggers the full workflow end-to-end. Mendix is the public operator UI, not where the intelligence lives."
 
 ---
 
@@ -85,8 +85,8 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 - **"Document to Decision in ~10 Seconds"**
 
 **On-slide (command):**
-```bash
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ayugbce-jx50275
+```sql
+CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');
 ```
 
 **On-slide (what happens):**
@@ -96,15 +96,16 @@ snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connec
 - Step 4: Autonomous action → block / escalate / clear
 
 **Optional demo insert (5-10s):**
-- Show the Streamlit dashboard first with the verified KPIs: `10,009 shipments`, `$53.0M revenue`, `2,394 screened entities`, `5 AI calls (24h)`
+- Show the Streamlit dashboard first with the verified KPIs: `10,025 shipments`, `$53.1M revenue`, `2,394 screened entities`, `5 AI calls (24h)`
 
 **Speaker notes (tight narration):**
-- "This single CLI call runs the entire pipeline. Next we’ll validate multi-step orchestration using the audit log."
+- "This single CLI call runs the entire pipeline. The public prototype link is Mendix for zero-friction access, but the technical proof happens here in Snowflake. Next we’ll validate multi-step orchestration using the audit log."
 
 **On-screen cues:**
 - Keep terminal font large.
 - Show the JSON result returned by the procedure.
 - Do not spend time in Mendix here (Mendix is the MVP link, not the execution surface).
+- If using the author's workstation, run this from Cortex Code's SQL runner rather than `snow sql` because the local OAuth path is unreliable there.
 
 ---
 
@@ -132,7 +133,7 @@ LIMIT 5;
 
 **On-slide (query):**
 ```sql
-SELECT ALERT_ID, ALERT_TYPE, SEVERITY, STATUS, RESOLUTION_NOTES, CREATED_AT, RESOLVED_AT
+SELECT ALERT_ID, ALERT_TYPE, SEVERITY, STATUS, AI_RECOMMENDED_ACTION, RESOLUTION_NOTES
 FROM MENDIX_APP.AGENTS.FRAUD_ALERT
 ORDER BY ALERT_ID DESC
 LIMIT 5;
@@ -140,7 +141,7 @@ LIMIT 5;
 
 **On-slide (bullets):**
 - Produces actionable records (alerts) not just analytics
-- Severity tiers + resolution notes for downstream operations
+- Severity tiers + AI-recommended actions + resolution notes for downstream operations
 
 **Speaker notes:**
 - "This is what operations teams use day-to-day: alert severity, status, and remediation notes."
@@ -151,9 +152,10 @@ LIMIT 5;
 
 **On-slide (bullets):**
 - **Orchestration**: `WORKFLOW_FULL_PIPELINE_V2` chains skills with audit logging
-- **Decision branches**: severity tiers → BLOCK / ESCALATE / CLEAR
+- **Decision branches**: AI decision drives BLOCK / ESCALATE / CLEAR
 - **Reliability**: defensive lookups + retry wrapper for transient AI failures
-- **CLI-native build process**: authored, debugged, validated in CoCo CLI
+- **CLI-native build process**: authored, debugged, validated in CoCo CLI / Cortex Code
+- **Governance hardening**: owner-rights Streamlit write actions removed or made view-only to prevent reviewer-side mutations
 - **Demo polish**: Streamlit dashboard charts were live-verified and corrected before recording
 
 **Speaker notes:**
@@ -167,7 +169,7 @@ LIMIT 5;
 
 | Criteria (Section 9) | Evidence |
 |----------------------|----------|
-| Cortex Code CLI usage | Built/debugged via CoCo CLI sessions; demo executed via `snow sql` |
+| Cortex Code CLI usage | Built/debugged via CoCo CLI sessions; demo executed from Cortex Code / SQL CLI |
 | Python / Java / Scala | Python (Snowpark), Java (Mendix integration), SQL (core workflows) |
 | Snowflake platform | Cortex AI, Cortex Agent, Marketplace, Streams/Tasks, Dynamic Tables |
 | Snowpark / Streamlit / Marketplace | Demonstrated integrations (Marketplace + Snowpark; Streamlit screenshots optional) |
@@ -183,6 +185,7 @@ LIMIT 5;
 - Add more Marketplace context (FX rates, port congestion, weather)
 - Add feedback loop from outcomes to improve prompts and thresholds
 - Extend Snowpark layer toward trained risk models (Snowpark ML)
+- Evolve Streamlit into a deeper operator console while keeping Mendix as the zero-friction public prototype
 
 **Speaker notes:**
 - "This submission proves the workflow pattern. Next steps are enrichment, tuning, and broader data coverage."
@@ -193,7 +196,8 @@ LIMIT 5;
 
 **On-slide:**
 - GitHub repo: https://github.com/hoachauphuoc/vf-logistics-hackathon
-- Public MVP (Mendix): https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
+- Public prototype (Mendix): https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
+- Optional read-only Streamlit access available on request
 - Contact: `hoachauphuoc@gmail.com`
 
 **Speaker notes:**

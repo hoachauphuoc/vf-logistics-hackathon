@@ -13,9 +13,11 @@
 This Mendix app is the operational UI that a compliance team would use to view shipments and investigation statuses (e.g., `Pending_Review` → `AI_Processed`).
 
 Important notes for judges:
-- The **autonomous workflow execution** (Fraud Detection → AI Investigation → Sanctions Screening → Remediation) is demonstrated in the submission video and can be triggered via CLI (see Section 4).
-- The Mendix sandbox is intended as a **public UI prototype**; interactive workflow execution typically requires authenticated Snowflake access.
+- The **public prototype entry point** is the Mendix sandbox because it has the lowest reviewer friction: no Snowflake login is required.
+- The **autonomous workflow execution** (Fraud Detection → AI Investigation → Sanctions Screening → Remediation) is demonstrated in the submission video and is executed from **Cortex Code / SQL CLI** (see Section 4).
+- The Mendix sandbox is intentionally the **operator UI prototype**, not the technical proof surface. Every detection, AI decision, audit log entry, and ERP post is made inside Snowflake.
 - The **Snowflake Streamlit dashboard** is the analytics and monitoring surface used in the demo, with verified charts for carrier revenue, shipment status, weekly shipment volume, top routes, FX rates, sanctions counts, and AI usage.
+- **Optional reviewer access**: a read-only Snowflake account can be provided for the Streamlit dashboard if a judge wants to inspect the backend UI directly, but it is not required to evaluate the submission and should be treated as bonus access rather than the primary prototype link.
 
 ## 1. Problem & Business Impact
 
@@ -26,7 +28,7 @@ Maritime freight fraud (undervalued/overvalued cargo, shell-company shippers, sa
 - Screens counterparties against live government sanctions data
 - Takes autonomous action (block/escalate/clear) — with full audit trail for compliance
 
-**Measurable impact**: full detect → investigate → screen → remediate cycle completes in **~6-10 seconds** per shipment (see live execution time in `WORKFLOW_AUDIT_LOG`), vs. hours/days for manual compliance review. The current demo dataset includes **10,009 shipments** and **53M+ USD** in represented cargo charges.
+**Measurable impact**: full detect → investigate → screen → remediate cycle completes in **~6-10 seconds** per shipment (see live execution time in `WORKFLOW_AUDIT_LOG`), vs. hours/days for manual compliance review. The current demo dataset includes **10,025 shipments** and **$53.1M USD** in represented cargo charges.
 
 ---
 
@@ -87,6 +89,8 @@ snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of
 snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection ayugbce-jx50275
 ```
 
+If you are reproducing this on the author's workstation, note that the local `snow` CLI OAuth path is unreliable there; the same commands were therefore executed through **Cortex Code's SQL runner** during validation and in the final demo script.
+
 `WORKFLOW_INGEST_AND_DECIDE` chains three stages and logs each one:
 `PROCESS_BL_DOCUMENTS` (OCR + AI extraction of every new PDF) → `SYNC_EXTRACTED_TO_BILL_OF_LADING` (promote the documents into the operational table) → `WORKFLOW_FULL_PIPELINE_V2` (detect → investigate → screen → AI-decided remediation → ERP posting).
 
@@ -107,6 +111,8 @@ snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connec
 ```bash
 snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ayugbce-jx50275
 ```
+
+The home-dashboard "Run Pipeline" demo shortcut was deliberately removed from the Streamlit UI because it called a scripted `DEMO_PIPELINE()` helper rather than the real orchestrator. The only pipeline button left in the UI points to the real backend flow.
 
 ### Option D — Natural language via Cortex Agent (CoCo CLI / Snowflake Intelligence)
 > "Scan for fraud and handle any issues autonomously"
@@ -157,7 +163,6 @@ vf-logistics-hackathon/
 ├── README.md                       (this file)
 ├── COMPLIANCE_CHECKLIST.md         Terms & Conditions compliance audit
 ├── PRESENTATION_OUTLINE.md         Slide-by-slide deck outline
-├── VOICEOVER_SCRIPT_4MIN.md        Final 4-minute narration script
 ├── docs/
 │   └── COCO_CLI_EVIDENCE.md         Verifiable record of Cortex Code CLI usage (§9 criterion 1)
 ├── architecture/
@@ -198,7 +203,7 @@ vf-logistics-hackathon/
 
 | Dataset | Source | License |
 |---------|--------|---------|
-| BILL_OF_LADING (10,009 rows) | Self-generated synthetic data | N/A |
+| BILL_OF_LADING (10,025 rows) | Self-generated synthetic data | N/A |
 | Export-restricted entities list | Snowflake Marketplace — "Snowflake Public Data (Free)" (listing `GZTSZ290BV255`) | Free, Snowflake-provided |
 | FX exchange rates (`V_EXCHANGE_RATES`) | Snowflake Marketplace-backed reference data in account | Snowflake-provided |
 | HS_CODE_REFERENCE | Self-generated (based on public HS Code standard) | Public reference |
@@ -231,7 +236,8 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 ## 10. Demo-Ready Status (2026-07-27)
 
 - Main Streamlit dashboard verified live in Snowflake after final UI/chart fixes
-- KPI totals confirmed: **10,009 shipments**, **$53,042,546 revenue**, **1,200 pending**, **10 carriers**, **1,809 approved**, **3,000 in transit**
+- KPI totals confirmed: **10,025 shipments**, **$53.1M revenue**, **1,195 pending**, **12 carriers**, **1,808 approved**, **3,000 in transit**
 - Carrier, route, status, and weekly trend charts were corrected to avoid Plotly rendering distortions in Streamlit-in-Snowflake
-- Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**), AI usage, and pipeline controls display correctly during the demo
+- Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**), AI usage, and pipeline context display correctly during the demo
+- Write-capable controls were removed from Streamlit pages that run under Snowflake owner's-rights execution, so reviewer access cannot accidentally mutate shared config or shipment state through the UI
 - Full system validation report is captured in [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md)
