@@ -78,6 +78,16 @@ st.divider()
 
 # Daily cost trend
 st.subheader(t["daily_cost"])
+st.caption(
+    "Token counts are the actual usage figures returned by Cortex with each call. "
+    "Cost is an **estimate**: real tokens x the per-model reference credit rate in AI_MODEL_RATE x USD per credit. "
+    "Authoritative billed consumption is SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
+    if st.session_state.lang == "EN" else
+    "Số token là số thật do Cortex trả về theo từng lệnh gọi. Chi phí là **ước lượng**: token thật x đơn giá credit theo model trong AI_MODEL_RATE x USD/credit. "
+    "Số liệu tính phí chính thức nằm ở SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
+    if st.session_state.lang == "VN" else
+    "トークン数はCortexが返す実測値です。コストは概算です（実トークン×AI_MODEL_RATEのモデル別クレジット単価×USD/クレジット）。"
+)
 try:
     cost_df = get_cost_trend()
     if len(cost_df) > 0:

@@ -1,3 +1,25 @@
+-- ############################################################################
+-- IMPORTANT - DEPLOYMENT ORDER
+-- ----------------------------------------------------------------------------
+-- The following procedures in THIS file are the pre-hardening versions:
+--   WORKFLOW_DETECT_AND_ACT, WORKFLOW_INVESTIGATE_ANOMALY, WORKFLOW_FULL_PIPELINE_V2
+--
+-- Their CURRENT deployed definitions live in hardened_objects.sql, which is
+-- generated directly from the live database with GET_DDL so the repository
+-- cannot silently drift from what actually runs. hardened_objects.sql adds:
+--   * detection thresholds derived from the data distribution (p99 / multiples
+--     of the peer median cost-per-kg) instead of hardcoded constants
+--   * queue backpressure so detection cannot flood the triage queue
+--   * batch processing across HIGH and MEDIUM severity, with per-step timings
+--     written to WORKFLOW_AUDIT_LOG.EXECUTION_TIME_MS
+--   * a JSON-schema-enforced AI decision contract with a repair retry, and the
+--     cost-per-kg threshold comparison moved into SQL because language models
+--     are unreliable at numeric threshold arithmetic
+--   * real Cortex token usage recorded to AI_CALL_LOG
+--
+-- APPLY THIS FILE FIRST, THEN hardened_objects.sql.
+-- ############################################################################
+
 ﻿-- ============================================================
 -- VF LOGISTICS - Agent Skills: Core Procedure Definitions
 -- ============================================================
@@ -500,6 +522,12 @@ END
 ';
 
 -- ============================================================
--- DEMO HELPER: Seeds a fresh suspicious shipment for live demos
+-- REMOVED: DEMO_PIPELINE()
+-- ----------------------------------------------------------------------------
+-- This helper inserted a scripted suspicious shipment plus a matching fraud
+-- alert directly, bypassing the real detection rules, so a demo could look
+-- successful without exercising any real logic. It was DROPPED from the
+-- database entirely rather than merely hidden from the UI. Every alert in
+-- this account is now produced by WORKFLOW_DETECT_AND_ACT from the actual
+-- data distribution.
 -- ============================================================
-CREATE OR REPLACE PROCEDURE "DEMO_PIPELINE"() RETURNS VARCHAR LANGUAGE SQL COMMENT='Quick demo helper: runs core pipeline steps in sequence with sample data. Designed for live hackathon demonstrations.' EXECUTE AS OWNER AS 'BEGIN   INSERT INTO MENDIX_APP.AGENTS.BILL_OF_LADING      (BL_NUMBER, SHIPPER_NAME, CONSIGNEE_NAME, CARRIER_NAME, VESSEL_NAME,      PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE, COMMODITY_DESCRIPTION,      HS_CODE, GROSS_WEIGHT_KGS, TOTAL_CHARGES, STATUS, CONTAINER_NUMBER, CREATED_AT)   VALUES      (''DEMO'' || TO_CHAR(CURRENT_TIMESTAMP(), ''HHMISS''),      ''SUSPICIOUS TRADING CO'', ''SHELL CORP INTL'', ''MAERSK'', ''MV DEMO VESSEL'',      ''VNSGN'', ''KRPUS'', ''Undeclared high-value electronics'',      ''8542'', 95000, 75000, ''Pending_Review'', ''DEMO1234567'', CURRENT_TIMESTAMP());    LET new_bl_id NUMBER;   new_bl_id := (SELECT MAX(BL_ID) FROM MENDIX_APP.AGENTS.BILL_OF_LADING WHERE BL_NUMBER LIKE ''DEMO%'');    INSERT INTO MENDIX_APP.AGENTS.FRAUD_ALERT (BL_ID, ALERT_TYPE, SEVERITY, DESCRIPTION, DETECTED_AT, STATUS)   SELECT :new_bl_id, ''HIGH_VALUE_ANOMALY'', ''HIGH'',     ''Pipeline: Auto-detected $75K + 95T anomaly on BL_ID='' || :new_bl_id::VARCHAR,     CURRENT_TIMESTAMP(), ''OPEN'';    INSERT INTO MENDIX_APP.AGENTS.NOTIFICATION_LOG (NOTIFICATION_TYPE, RECIPIENT, SUBJECT, BODY, SENT_AT, STATUS)   SELECT ''FRAUD_ALERT'', ''compliance@vflogistics.com'',      ''ALERT [HIGH]: HIGH_VALUE_ANOMALY'',     ''BL_ID: '' || :new_bl_id::VARCHAR || '' flagged by automated pipeline.'',     CURRENT_TIMESTAMP(), ''SENT'';    RETURN ''Pipeline OK: BL_ID='' || :new_bl_id::VARCHAR || '' -> Fraud Alert (HIGH) -> Notification (SENT)''; END';
