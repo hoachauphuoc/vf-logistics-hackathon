@@ -214,13 +214,11 @@ with mk3:
 
 with mk4:
     st.markdown("**⚡ Pipeline Demo**")
-    if st.button("🚀 Run Pipeline", type="primary", use_container_width=True):
-        with st.spinner("INSERT → Fraud → Notify..."):
-            try:
-                r = session.sql("CALL DEMO_PIPELINE()").collect()[0][0]
-                st.success(r)
-            except Exception as e:
-                st.error(str(e)[:80])
+    st.caption(
+        "Run the real autonomous pipeline (detect → AI investigate → sanctions screen → SAP post) from the Fraud Detection page."
+        if lang == "EN" else
+        "Chạy pipeline tự động thật (phát hiện → AI điều tra → sàng lọc cấm vận → gửi SAP) tại trang Fraud Detection."
+    )
 
 # Footer
 st.divider()
