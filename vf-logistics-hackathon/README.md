@@ -270,11 +270,14 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 ## 10. Demo-Ready Status (2026-07-27)
 
 - Main Streamlit dashboard verified live in Snowflake after final UI/chart fixes
-- KPI totals **at last validation**: approximately **10,025 shipments**, **$53.1M revenue**, **~1,195 pending**, **12 carriers**, **~1,808 approved**, **~3,000 in transit**. These are point-in-time figures from a live, autonomous system — status and charges change as the pipeline runs, so the dashboard may show different numbers by the time a judge looks. To see the current live values, run:
+- KPI totals **at last validation (2026-08-02)**: approximately **10,017 shipments**, **$52.9M revenue**, **~1,197 pending**, **12 carriers**, **~1,740 approved**, **~2,884 in transit**. These are point-in-time figures from a live, autonomous system — status and charges change as the pipeline runs, so the dashboard may show different numbers by the time a judge looks. To see the current live values, run:
   ```sql
+  -- note: STATUS values are mixed-case in the source data ('APPROVED' but 'In_Transit')
   SELECT COUNT(*) AS SHIPMENTS, SUM(TOTAL_CHARGES) AS REVENUE,
-         SUM(CASE WHEN STATUS='Pending_Review' THEN 1 ELSE 0 END) AS PENDING,
-         COUNT(DISTINCT CARRIER_NAME) AS CARRIERS
+         COUNT(DISTINCT CARRIER_NAME) AS CARRIERS,
+         SUM(CASE WHEN UPPER(STATUS)='PENDING_REVIEW' THEN 1 ELSE 0 END) AS PENDING,
+         SUM(CASE WHEN UPPER(STATUS)='APPROVED' THEN 1 ELSE 0 END) AS APPROVED,
+         SUM(CASE WHEN UPPER(STATUS)='IN_TRANSIT' THEN 1 ELSE 0 END) AS IN_TRANSIT
   FROM MENDIX_APP.AGENTS.BILL_OF_LADING;
   ```
 - Carrier, route, status, and weekly trend charts were corrected to avoid Plotly rendering distortions in Streamlit-in-Snowflake
