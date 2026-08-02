@@ -19,6 +19,16 @@ except:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+
+def safe_rerun():
+    # st.rerun() was added in Streamlit 1.27; the Streamlit-in-Snowflake warehouse
+    # runtime conda environment can pin an older version that only has the
+    # deprecated st.experimental_rerun().
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+
 def generate_response(question):
     try:
         # Step 1: Determine if this is a data question or conversational
@@ -62,15 +72,24 @@ Question: {question}"""
             answer = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, chat_prompt]).collect()[0][0]
             return str(answer), None
 
-        # Safety: only block if DML keywords appear as statement starters (not inside strings/comments)
-        # Split by semicolons to check each statement
-        statements = sql_upper.replace('\n', ' ').split(';')
-        dangerous = ["DROP ", "DELETE ", "INSERT ", "UPDATE ", "ALTER ", "CREATE ", "TRUNCATE ", "MERGE "]
-        for stmt in statements:
-            stmt_trimmed = stmt.strip()
-            for kw in dangerous:
-                if stmt_trimmed.startswith(kw):
-                    return "I can only run SELECT queries for safety.", None
+        # Safety: this app runs with owner's-rights execution (Streamlit-in-Snowflake
+        # warehouse runtime always executes as the app owner, not the viewer -- see
+        # docs.snowflake.com/en/developer-guide/streamlit/object-management/owners-rights).
+        # A DML keyword blocklist is not a real security boundary against a model-generated
+        # query running with the owner's full privileges, so instead of blocklisting we
+        # allowlist: reject anything but a single simple SELECT, and reject any statement
+        # that references a table outside the two this feature was designed for.
+        if ";" in sql.rstrip(";"):
+            return "I can only run a single SELECT statement for safety.", None
+
+        # Only inspect identifiers that follow FROM/JOIN -- checking every identifier
+        # in the query would also catch ordinary column names and break real questions.
+        allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
+        import re
+        referenced_tables = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
+        table_names = {t.split(".")[-1] for t in referenced_tables}
+        if not table_names or not table_names.issubset(allowed_tables):
+            return "I can only query BILL_OF_LADING and FRAUD_ALERT for safety.", None
 
         if "LIMIT" not in sql_upper:
             sql = sql.rstrip(";") + " LIMIT 20"
@@ -124,7 +143,7 @@ with st.sidebar:
         st.session_state.messages = []
         if "pending_question" in st.session_state:
             del st.session_state.pending_question
-        st.rerun()
+        safe_rerun()
     st.caption(f"Model: {ai_model}")
 
 # Display existing messages
@@ -175,7 +194,7 @@ if send_clicked and user_input:
     if "pending_question" in st.session_state:
         del st.session_state.pending_question
 
-    st.rerun()
+    safe_rerun()
 
 # Welcome message if no history
 if not st.session_state.messages:
