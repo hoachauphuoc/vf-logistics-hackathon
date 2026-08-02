@@ -80,16 +80,23 @@ with col3:
             try:
                 import json
                 raw = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
-                st.success(t["pipeline_success"])
                 try:
                     parsed = json.loads(raw)
                     decision = parsed.get("ai_decision", "n/a")
                     reason = parsed.get("ai_reason", "")
+                    if decision == "NONE":
+                        st.warning(reason or "Pipeline ran, but there was no eligible HIGH-severity alert to investigate.")
+                    else:
+                        st.success(t["pipeline_success"])
                     st.metric(t["autonomous_decision_metric"], decision)
                     if reason:
                         st.caption(t["reason_label"].format(v=reason))
+                    sap_posting = parsed.get("sap_posting")
+                    if isinstance(sap_posting, dict) and sap_posting.get("status") == "SUCCESS":
+                        st.caption(f"SAP posting: {sap_posting.get('sap_document', 'n/a')}")
                     st.caption(t["execution_time_label"].format(ms=parsed.get('execution_time_ms', '?')))
                 except Exception:
+                    st.success(t["pipeline_success"])
                     st.code(raw, language="json")
             except Exception as e:
                 st.error(t["pipeline_error"].format(err=str(e)[:150]))

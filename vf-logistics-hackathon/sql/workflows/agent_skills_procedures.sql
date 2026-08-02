@@ -411,6 +411,9 @@ BEGIN
                 ''SKIPPED: no new HIGH-severity OPEN alert to investigate'', ''SKIPPED'');
         v_ai_action := ''NONE'';
         v_ai_reason := ''No open HIGH-severity alert required a decision in this run.'';
+        v_shipper := ''n/a'';
+        v_sap_bl_id := NULL;
+        v_sap_result := ''{"status":"SKIPPED","reason":"no AI-approved shipment eligible for SAP posting in this run"}'';
         v_steps := 3;
     ELSE
         CALL MENDIX_APP.AGENTS.WORKFLOW_INVESTIGATE_ANOMALY(:v_alert_id);
@@ -436,18 +439,26 @@ BEGIN
                 ''Action executed: '' || :v_ai_action || '' | reason='' || :v_ai_reason, ''SUCCESS'');
     END IF;
 
-    SELECT BL_ID INTO :v_sap_bl_id FROM MENDIX_APP.AGENTS.BILL_OF_LADING
-    WHERE STATUS = ''APPROVED'' AND SYNCED_TO_ERP = FALSE AND TOTAL_CHARGES IS NOT NULL
-      AND BL_ID NOT IN (SELECT BL_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT WHERE STATUS = ''OPEN'')
-    ORDER BY BL_ID LIMIT 1;
+    IF (:v_alert_id IS NOT NULL AND :v_ai_action = ''CLEAR'') THEN
+        SELECT BL_ID INTO :v_sap_bl_id
+        FROM MENDIX_APP.AGENTS.FRAUD_ALERT
+        WHERE ALERT_ID = :v_alert_id;
 
-    IF (:v_sap_bl_id IS NOT NULL) THEN
-        CALL MENDIX_APP.AGENTS.SAP_POST_FI_DOCUMENT(:v_sap_bl_id) INTO :v_sap_result;
+        IF (:v_sap_bl_id IS NOT NULL) THEN
+            CALL MENDIX_APP.AGENTS.SAP_POST_FI_DOCUMENT(:v_sap_bl_id) INTO :v_sap_result;
+            INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, STATUS)
+            VALUES (''FULL_PIPELINE_V2'', ''SAP_POST'', 5, ''bl_id='' || TO_VARCHAR(:v_sap_bl_id), :v_sap_result, ''SUCCESS'');
+        ELSE
+            v_sap_result := ''{"status":"SKIPPED","reason":"no BL linked to investigated alert"}'';
+            INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, STATUS)
+            VALUES (''FULL_PIPELINE_V2'', ''SAP_POST'', 5, ''bl_id=none'', :v_sap_result, ''SKIPPED'');
+        END IF;
     ELSE
-        v_sap_result := ''{"status":"SKIPPED","reason":"no eligible BL"}'';
+        v_sap_bl_id := NULL;
+        v_sap_result := ''{"status":"SKIPPED","reason":"SAP posting only runs after a CLEAR decision in this run"}'';
+        INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, STATUS)
+        VALUES (''FULL_PIPELINE_V2'', ''SAP_POST'', 5, ''bl_id=none'', :v_sap_result, ''SKIPPED'');
     END IF;
-    INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, STATUS)
-    VALUES (''FULL_PIPELINE_V2'', ''SAP_POST'', 5, ''bl_id='' || NVL(TO_VARCHAR(:v_sap_bl_id), ''none''), :v_sap_result, ''SUCCESS'');
 
     v_elapsed_ms := DATEDIFF(''millisecond'', :v_start_time, CURRENT_TIMESTAMP());
 

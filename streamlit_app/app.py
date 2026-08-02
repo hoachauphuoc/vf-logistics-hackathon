@@ -7,6 +7,17 @@ import pandas as pd
 st.set_page_config(page_title="VF Logistics", page_icon="🚢", layout="wide")
 session = get_active_session()
 
+
+def safe_rerun():
+    # st.rerun() was added in Streamlit 1.27; the Streamlit-in-Snowflake warehouse
+    # runtime can ship an older bundled version that only has the now-deprecated
+    # st.experimental_rerun().
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+
+
 if "lang" not in st.session_state:
     st.session_state.lang = "EN"
 lang = st.session_state.lang
@@ -32,7 +43,7 @@ with col_lang:
     new_lang = st.selectbox("🌐", ["EN", "VN", "JA"], index=["EN","VN","JA"].index(lang), label_visibility="collapsed")
     if new_lang != lang:
         st.session_state.lang = new_lang
-        st.rerun()
+        safe_rerun()
 
 # KPI Section with loading
 with st.spinner("Loading KPIs..." if lang == "EN" else "Đang tải..."):
