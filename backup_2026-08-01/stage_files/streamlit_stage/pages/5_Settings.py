@@ -7,6 +7,18 @@ lang = st.session_state.get("lang", "EN")
 
 st.title("⚙️ System Settings" if lang == "EN" else "⚙️ Cài đặt hệ thống")
 
+
+def safe_update(sql, params, success_message):
+    try:
+        session.sql(sql, params=params).collect()
+        st.success(success_message)
+    except Exception as e:
+        if "insufficient privileges" in str(e).lower():
+            st.info("Read-only demo access — write actions are disabled for reviewers.")
+        else:
+            st.error(str(e)[:100])
+
+
 try:
     configs = session.sql("SELECT CONFIG_KEY, CONFIG_VALUE FROM APP_CONFIG").collect()
     config_dict = {row["CONFIG_KEY"]: row["CONFIG_VALUE"] for row in configs}
@@ -22,16 +34,14 @@ with col1:
     new_model = st.selectbox("AI Model", model_options, index=model_idx)
     if new_model != current_model:
         if st.button("Save Model"):
-            session.sql("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'AI_MODEL'", params=[new_model]).collect()
-            st.success(f"Updated to {new_model}")
+            safe_update("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'AI_MODEL'", [new_model], f"Updated to {new_model}")
 
 with col2:
     current_threshold = int(float(config_dict.get("FRAUD_CONFIDENCE_THRESHOLD", "70")))
     new_threshold = st.slider("Fraud Confidence Threshold (%)", 0, 100, current_threshold, 5)
     if new_threshold != current_threshold:
         if st.button("Save Threshold"):
-            session.sql("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'FRAUD_CONFIDENCE_THRESHOLD'", params=[str(new_threshold)]).collect()
-            st.success(f"Updated to {new_threshold}%")
+            safe_update("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'FRAUD_CONFIDENCE_THRESHOLD'", [str(new_threshold)], f"Updated to {new_threshold}%")
 
 st.divider()
 st.subheader("💰 FinOps Settings")
@@ -41,16 +51,14 @@ with col3:
     new_cost = st.number_input("Cost Alert (USD/day)", min_value=0.1, max_value=100.0, value=current_cost, step=0.5)
     if new_cost != current_cost:
         if st.button("Save Cost Alert"):
-            session.sql("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'AI_COST_ALERT_THRESHOLD'", params=[str(new_cost)]).collect()
-            st.success(f"Set to ${new_cost}")
+            safe_update("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'AI_COST_ALERT_THRESHOLD'", [str(new_cost)], f"Set to ${new_cost}")
 
 with col4:
     current_cache = int(config_dict.get("CACHE_TTL_SECONDS", "600"))
     new_cache = st.number_input("Cache TTL (seconds)", min_value=60, max_value=3600, value=current_cache, step=60)
     if new_cache != current_cache:
         if st.button("Save Cache"):
-            session.sql("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'CACHE_TTL_SECONDS'", params=[str(new_cache)]).collect()
-            st.success(f"Set to {new_cache}s")
+            safe_update("UPDATE APP_CONFIG SET CONFIG_VALUE = ? WHERE CONFIG_KEY = 'CACHE_TTL_SECONDS'", [str(new_cache)], f"Set to {new_cache}s")
 
 st.divider()
 st.subheader("📊 Current Config")

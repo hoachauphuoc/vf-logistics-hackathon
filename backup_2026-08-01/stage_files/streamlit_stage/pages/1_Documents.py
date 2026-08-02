@@ -139,14 +139,20 @@ with act_col1:
             session.sql("UPDATE BILL_OF_LADING SET STATUS = 'APPROVED' WHERE STATUS = 'Pending_Review' AND BL_ID IN (SELECT BL_ID FROM BILL_OF_LADING WHERE STATUS = 'Pending_Review' LIMIT 10)").collect()
             st.success("Approved 10 pending shipments")
         except Exception as e:
-            st.error(str(e)[:100])
+            if "insufficient privileges" in str(e).lower():
+                st.info("Read-only demo access — write actions are disabled for reviewers.")
+            else:
+                st.error(str(e)[:100])
 with act_col2:
     if st.button("🤖 Classify Commodities (AI)", use_container_width=True):
         try:
             result = session.sql("CALL CLASSIFY_BATCH(5)").collect()[0][0]
             st.success(result)
         except Exception as e:
-            st.error(str(e)[:100])
+            if "insufficient privileges" in str(e).lower():
+                st.info("Read-only demo access — write actions are disabled for reviewers.")
+            else:
+                st.error(str(e)[:100])
 with act_col3:
     if st.button("🔄 Refresh Search Index", use_container_width=True):
         st.info("Search index refreshes automatically every hour")
