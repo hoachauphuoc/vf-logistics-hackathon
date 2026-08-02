@@ -195,10 +195,13 @@ DECLARE
     v_p95_charges FLOAT;
     v_sanction_hits NUMBER DEFAULT 0;
     v_doc_context VARCHAR DEFAULT '''';
+    v_prompt VARCHAR;
     v_ai_analysis VARCHAR;
     v_context VARCHAR;
     v_decision VARCHAR;
     v_reason VARCHAR;
+    v_start_ts TIMESTAMP_NTZ;
+    v_elapsed_ms NUMBER;
 BEGIN
     SELECT ALERT_TYPE, BL_ID
     INTO :v_alert_type, :v_bl_id
@@ -265,18 +268,41 @@ BEGIN
         || '' (0 = both parties clear, -1 = screening data unavailable).''
         || NVL(:v_doc_context, '''');
 
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(''mistral-large2'',
-        ''You are a maritime logistics fraud and compliance analyst. Analyze the alert below and produce: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key indicators with the actual numbers, 3) The action you decide. Be concise.\\n\\n''
-        || ''Apply THIS RUBRIC and follow it strictly:\\n''
-        || ''- BLOCK: sanctions matches > 0, OR cost/kg exceeds 5x the peer median, OR the counterparty name indicates a shell/front company (e.g. contains "SUSPICIOUS", "SHELL", "UNKNOWN", or is a generic non-identifiable trading name).\\n''
-        || ''- ESCALATE: a required commercial figure is missing or unverifiable so a human must judge; OR the document provenance section reports an extraction confidence below 60/100 or a failed validation, because the underlying data cannot be trusted enough to clear or block automatically.\\n''
-        || ''- CLEAR: sanctions matches = 0 AND cost/kg is at or below the 95th percentile AND total charges are at or below the 95th percentile AND both counterparties are recognisable real businesses AND (if document provenance is given) the extraction validated cleanly. A weight or duplicate-BL flag alone, with normal economics and clean screening, is a routine data-quality issue and should be CLEARED.\\n\\n''
-        || ''Do not invent thresholds beyond those above. Justify your decision with the numbers given.\\n\\n''
-        || ''You MUST end your response with exactly two final lines in this format:\\n''
-        || ''DECISION: <BLOCK or ESCALATE or CLEAR>\\n''
-        || ''REASON: <one sentence, max 200 characters, citing the decisive evidence>\\n\\n''
-        || ''Alert evidence: '' || :v_context
-    ) INTO :v_ai_analysis;
+    v_prompt := ''You are a maritime logistics fraud and compliance analyst. Analyze the alert below and produce: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key indicators with the actual numbers, 3) The action you decide. Be concise.\n\n''
+        || ''Apply THIS RUBRIC and follow it strictly:\n''
+        || ''- BLOCK: sanctions matches > 0, OR cost/kg exceeds 5x the peer median, OR the counterparty name indicates a shell/front company (e.g. contains "SUSPICIOUS", "SHELL", "UNKNOWN", or is a generic non-identifiable trading name).\n''
+        || ''- ESCALATE: a required commercial figure is missing or unverifiable so a human must judge; OR the document provenance section reports an extraction confidence below 60/100 or a failed validation, because the underlying data cannot be trusted enough to clear or block automatically.\n''
+        || ''- CLEAR: sanctions matches = 0 AND cost/kg is at or below the 95th percentile AND total charges are at or below the 95th percentile AND both counterparties are recognisable real businesses AND (if document provenance is given) the extraction validated cleanly. A weight or duplicate-BL flag alone, with normal economics and clean screening, is a routine data-quality issue and should be CLEARED.\n\n''
+        || ''Do not invent thresholds beyond those above. Justify your decision with the numbers given.\n\n''
+        || ''You MUST end your response with exactly two final lines in this format:\n''
+        || ''DECISION: <BLOCK or ESCALATE or CLEAR>\n''
+        || ''REASON: <one sentence, max 200 characters, citing the decisive evidence>\n\n''
+        || ''Alert evidence: '' || :v_context;
+
+    v_start_ts := CURRENT_TIMESTAMP();
+
+    BEGIN
+        SELECT SNOWFLAKE.CORTEX.COMPLETE(''mistral-large2'', :v_prompt) INTO :v_ai_analysis;
+
+        v_elapsed_ms := DATEDIFF(''millisecond'', :v_start_ts, CURRENT_TIMESTAMP());
+
+        INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG
+            (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS,
+             LATENCY_MS, INPUT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS, PROMPT, RESPONSE)
+        SELECT CURRENT_TIMESTAMP(), ''mistral-large2'', ''WORKFLOW_INVESTIGATE_ANOMALY'', ''fraud_investigation'', ''SUCCESS'', ''SUCCESS'',
+               :v_elapsed_ms,
+               CEIL(LENGTH(:v_prompt) / 4.0), CEIL(LENGTH(:v_ai_analysis) / 4.0),
+               CEIL(LENGTH(:v_prompt) / 4.0) + CEIL(LENGTH(:v_ai_analysis) / 4.0),
+               LEFT(:v_prompt, 5000), LEFT(:v_ai_analysis, 10000);
+    EXCEPTION
+        WHEN OTHER THEN
+            v_elapsed_ms := DATEDIFF(''millisecond'', :v_start_ts, CURRENT_TIMESTAMP());
+            INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG
+                (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS, LATENCY_MS, PROMPT)
+            SELECT CURRENT_TIMESTAMP(), ''mistral-large2'', ''WORKFLOW_INVESTIGATE_ANOMALY'', ''fraud_investigation'', ''ERROR'', ''ERROR'',
+                   :v_elapsed_ms, LEFT(:v_prompt, 5000);
+            v_ai_analysis := ''DECISION: ESCALATE\nREASON: AI call failed ('' || LEFT(SQLERRM, 150) || ''); defaulted to human review.'';
+    END;
 
     v_decision := UPPER(NVL(REGEXP_SUBSTR(:v_ai_analysis, ''DECISION:\\\\s*(BLOCK|ESCALATE|CLEAR)'', 1, 1, ''i'', 1), ''ESCALATE''));
     v_reason := NVL(TRIM(REGEXP_SUBSTR(:v_ai_analysis, ''REASON:\\\\s*(.+)'', 1, 1, ''i'', 1)),

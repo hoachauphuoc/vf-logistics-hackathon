@@ -1,4 +1,5 @@
 import streamlit as st
+import time
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language
 
@@ -31,12 +32,40 @@ def safe_rerun():
         st.experimental_rerun()
 
 
+def cortex_complete_logged(model, prompt, context):
+    """Call Cortex COMPLETE and log the real latency + an estimated token count to AI_CALL_LOG."""
+    start = time.time()
+    status = "SUCCESS"
+    answer = ""
+    try:
+        result = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[model, prompt]).collect()[0][0]
+        answer = str(result)
+        return answer
+    except Exception:
+        status = "ERROR"
+        raise
+    finally:
+        elapsed_ms = int((time.time() - start) * 1000)
+        in_tokens = max(1, len(prompt) // 4)
+        out_tokens = max(1, len(answer) // 4) if status == "SUCCESS" else 0
+        try:
+            session.sql("""
+                INSERT INTO AI_CALL_LOG
+                    (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS,
+                     LATENCY_MS, INPUT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS, PROMPT, RESPONSE)
+                SELECT CURRENT_TIMESTAMP(), ?, 'AI_CHAT', ?, ?, ?, ?, ?, ?, ?, ?, ?
+            """, params=[model, context, status, status, elapsed_ms, in_tokens, out_tokens,
+                         in_tokens + out_tokens, prompt[:5000], answer[:10000]]).collect()
+        except Exception:
+            pass
+
+
 def generate_response(question):
     try:
         # Step 1: Determine if this is a data question or conversational
         classify_prompt = f"Classify this user message as either DATA_QUERY (needs SQL to answer from a database about shipments, carriers, ports, freight, fraud alerts) or CONVERSATION (greeting, chitchat, general question, help request). Return ONLY one word: DATA_QUERY or CONVERSATION. Message: {question}"
-        msg_type = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, classify_prompt]).collect()[0][0]
-        msg_type = str(msg_type).strip().upper()
+        msg_type = cortex_complete_logged(ai_model, classify_prompt, "classify_intent")
+        msg_type = msg_type.strip().upper()
 
         # Step 2: If conversational, respond directly
         if "CONVERSATION" in msg_type or "DATA" not in msg_type:
@@ -46,8 +75,8 @@ Answer in the SAME LANGUAGE the user uses (Vietnamese, English, Japanese).
 Be friendly, concise, and helpful. If the user asks what you can do, list your capabilities.
 
 User: {question}"""
-            answer = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, chat_prompt]).collect()[0][0]
-            return str(answer), None
+            answer = cortex_complete_logged(ai_model, chat_prompt, "conversation")
+            return answer, None
 
         # Step 3: For data questions, generate SQL
         prompt = f"""You are a SQL expert for maritime logistics on Snowflake.
@@ -57,9 +86,9 @@ Write a SELECT query to answer this question. Available tables:
 Return ONLY the SQL query, no explanation. Add LIMIT 20 for list queries.
 Question: {question}"""
 
-        sql_result = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, prompt]).collect()[0][0]
+        sql_result = cortex_complete_logged(ai_model, prompt, "text_to_sql")
 
-        sql = str(sql_result).strip()
+        sql = sql_result.strip()
         if "```" in sql:
             parts = sql.split("```")
             if len(parts) >= 2:
@@ -71,8 +100,8 @@ Question: {question}"""
         sql_upper = sql.upper().strip()
         if not sql_upper.startswith("SELECT"):
             chat_prompt = f"You are VF Logistics AI assistant. Answer in the same language as the user. Question: {question}"
-            answer = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, chat_prompt]).collect()[0][0]
-            return str(answer), None
+            answer = cortex_complete_logged(ai_model, chat_prompt, "not_select_fallback")
+            return answer, None
 
         # Safety: this app runs with owner's-rights execution (Streamlit-in-Snowflake
         # warehouse runtime always executes as the app owner, not the viewer -- see
@@ -120,8 +149,8 @@ Question: {question}"""
         if "SQL compilation" in err:
             try:
                 fallback = f"Answer this maritime logistics question briefly: {question}"
-                ans = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, fallback]).collect()[0][0]
-                return str(ans), None
+                ans = cortex_complete_logged(ai_model, fallback, "sql_error_fallback")
+                return ans, None
             except Exception as e2:
                 return f"Error: {str(e2)[:150]}", None
         return f"Error: {err[:150]}", None
