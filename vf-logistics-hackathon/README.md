@@ -28,7 +28,7 @@ Maritime freight fraud (undervalued/overvalued cargo, shell-company shippers, sa
 - Screens counterparties against live government sanctions data
 - Takes autonomous action (block/escalate/clear) — with full audit trail for compliance
 
-**Measurable impact**: full detect → investigate → screen → remediate cycle completes in **~6-10 seconds** per shipment (see live execution time in `WORKFLOW_AUDIT_LOG`), vs. hours/days for manual compliance review. The current demo dataset includes **10,025 shipments** and **$53.1M USD** in represented cargo charges.
+**Measurable impact**: full detect → investigate → screen → remediate cycle completes in **~6-10 seconds** per shipment (see live execution time in `WORKFLOW_AUDIT_LOG`), vs. hours/days for manual compliance review. The current demo dataset holds **just over 10,000 shipments** and **roughly $53M USD** in represented cargo charges — these numbers are live, not a fixed snapshot: the pipeline autonomously updates shipment status and charges as it runs, so re-running the query in Section 10 minutes apart can show a slightly different figure. That drift is expected behavior, not a data error.
 
 ---
 
@@ -203,7 +203,7 @@ vf-logistics-hackathon/
 
 | Dataset | Source | License |
 |---------|--------|---------|
-| BILL_OF_LADING (10,025 rows) | Self-generated synthetic data | N/A |
+| BILL_OF_LADING (~10,000 rows, live count) | Self-generated synthetic data | N/A |
 | Export-restricted entities list | Snowflake Marketplace — "Snowflake Public Data (Free)" (listing `GZTSZ290BV255`) | Free, Snowflake-provided |
 | FX exchange rates (`V_EXCHANGE_RATES`) | Snowflake Marketplace-backed reference data in account | Snowflake-provided |
 | HS_CODE_REFERENCE | Self-generated (based on public HS Code standard) | Public reference |
@@ -236,7 +236,13 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 ## 10. Demo-Ready Status (2026-07-27)
 
 - Main Streamlit dashboard verified live in Snowflake after final UI/chart fixes
-- KPI totals confirmed: **10,025 shipments**, **$53.1M revenue**, **1,195 pending**, **12 carriers**, **1,808 approved**, **3,000 in transit**
+- KPI totals **at last validation**: approximately **10,025 shipments**, **$53.1M revenue**, **~1,195 pending**, **12 carriers**, **~1,808 approved**, **~3,000 in transit**. These are point-in-time figures from a live, autonomous system — status and charges change as the pipeline runs, so the dashboard may show different numbers by the time a judge looks. To see the current live values, run:
+  ```sql
+  SELECT COUNT(*) AS SHIPMENTS, SUM(TOTAL_CHARGES) AS REVENUE,
+         SUM(CASE WHEN STATUS='Pending_Review' THEN 1 ELSE 0 END) AS PENDING,
+         COUNT(DISTINCT CARRIER_NAME) AS CARRIERS
+  FROM MENDIX_APP.AGENTS.BILL_OF_LADING;
+  ```
 - Carrier, route, status, and weekly trend charts were corrected to avoid Plotly rendering distortions in Streamlit-in-Snowflake
 - Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**), AI usage, and pipeline context display correctly during the demo
 - Write-capable controls were removed from Streamlit pages that run under Snowflake owner's-rights execution, so reviewer access cannot accidentally mutate shared config or shipment state through the UI

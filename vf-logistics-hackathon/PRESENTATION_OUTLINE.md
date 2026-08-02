@@ -96,7 +96,7 @@ CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');
 - Step 4: Autonomous action → block / escalate / clear
 
 **Optional demo insert (5-10s):**
-- Show the Streamlit dashboard first with the verified KPIs: `10,025 shipments`, `$53.1M revenue`, `2,394 screened entities`, `5 AI calls (24h)`
+- Show the Streamlit dashboard first with the live KPIs \u2014 at last check: `~10,000 shipments`, `~$53M revenue`, `2,394 screened entities`, `5 AI calls (24h)`. These drift slightly run to run because the pipeline is a live autonomous system, not a static screenshot \u2014 do not worry if the exact number on screen differs from this outline.
 
 **Speaker notes (tight narration):**
 - "This single CLI call runs the entire pipeline. The public prototype link is Mendix for zero-friction access, but the technical proof happens here in Snowflake. Next we’ll validate multi-step orchestration using the audit log."

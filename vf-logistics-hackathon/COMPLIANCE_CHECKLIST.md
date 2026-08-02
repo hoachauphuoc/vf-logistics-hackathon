@@ -32,7 +32,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 
 | Dataset | Source | License | Notes |
 |---------|--------|---------|-------|
-| BILL_OF_LADING (10,025 rows) | Self-generated synthetic data | N/A (self-created) | Maritime logistics simulation data |
+| BILL_OF_LADING (~10,000 rows, live count) | Self-generated synthetic data | N/A (self-created) | Maritime logistics simulation data |
 | Snowflake Public Data (Free) — `INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX` | Snowflake Marketplace (free listing `GZTSZ290BV255`) | Free, Snowflake-provided | Used for sanctions screening — meets "Marketplace" criterion in Section 9 |
 | `V_EXCHANGE_RATES` | Snowflake-hosted reference data in account | Snowflake-provided | Used in the Streamlit monitoring panel |
 | HS_CODE_REFERENCE | Self-generated (based on public HS Code standard) | Public reference data | |
