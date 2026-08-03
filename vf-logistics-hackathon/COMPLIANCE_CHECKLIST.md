@@ -41,10 +41,11 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 
 | Requirement | Status | Action |
 |-------------|--------|--------|
-| (a) Presentation deck (PPT) | 🟡 Outline ready | Content updated; still needs final PPT export |
+| (a) Presentation deck (PPT) | ✅ Final | `VF_Logistics_Presentation.pptx` finalized (16 slides); excluded from git by `.gitignore`, uploaded directly to the contest portal |
 | (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, includes the submission docs, agent-skill SQL, Streamlit app source, Snowpark script and Mendix Java integration |
 | (c) Live demo (if reaching Finals) | ✅ Ready | `CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')` runs successfully via Cortex Code / SQL CLI, typically ~4-8s depending on warm state |
 | (d) Technical readiness | ✅ | Mendix public prototype, Streamlit monitoring UI, and CLI-driven backend were revalidated after the 2026-08-01 account migration, grants fix, and regression-test hardening |
+| (e) Demo video | ✅ Recorded | Full CoCo CLI + Snowsight + Streamlit walkthrough recorded (~4:40, 1280x676 source captured at 4K then reviewed at 720p); reviewed for accidental secret exposure — none found |
 
 ## 5. Section 5 — Entry Warranties (⚠️ CRITICAL)
 
@@ -97,7 +98,7 @@ props.put("password", password);
 
 ---
 
-## Summary: submission readiness (2026-08-01)
+## Summary: submission readiness (2026-08-02, final)
 
 | # | Item | Status |
 |---|---|---|
@@ -109,7 +110,8 @@ props.put("password", password);
 | 6 | **Decision integrity** | ✅ AI decision drives remediation; decision + reason persisted and surfaced |
 | 7 | **End-to-end flow** | ✅ `WORKFLOW_INGEST_AND_DECIDE` — batch PDF upload to AI decision in one command |
 | 8 | **GitHub source code** (§4.5b) | ✅ https://github.com/hoachauphuoc/vf-logistics-hackathon (public) |
-| 9 | **Presentation deck** (§4.5a) | ✅ `VF_Logistics_Presentation.pptx` — 16 slides; upload directly to the portal (excluded from git by `.gitignore`) |
+| 9 | **Presentation deck** (§4.5a) | ✅ `VF_Logistics_Presentation.pptx` — 16 slides, finalized; upload directly to the portal (excluded from git by `.gitignore`) |
+| 9b | **Demo video** | ✅ Recorded and reviewed (CLI + Snowsight + Streamlit walkthrough); no secrets or credentials found on screen |
 | 10 | **Public MVP URL** | ✅ https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously) |
 | 11 | **Registration** (§4.1a) | ✅ team "Sora", 2 members, confirmed on the contest portal |
 | 12 | **Validation report** | ✅ `../docs/reference/TEST_REPORT_FINAL_2026-08-01.md` |

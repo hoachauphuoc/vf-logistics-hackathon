@@ -249,7 +249,7 @@ See [`COMPLIANCE_CHECKLIST.md`](COMPLIANCE_CHECKLIST.md) for the full Terms & Co
 - Entry Requirements checklist (Section 4)
 - Entry Warranties compliance (Section 5)
 
-For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_EVIDENCE.md`](docs/COCO_CLI_EVIDENCE.md) — it documents six engineering sessions with the exact SQL a judge can re-run to verify each outcome.
+For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_EVIDENCE.md`](docs/COCO_CLI_EVIDENCE.md) — it documents eight engineering sessions with the exact SQL a judge can re-run to verify each outcome.
 
 ---
 

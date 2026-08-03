@@ -22,12 +22,11 @@ Other entry points for reviewers:
 | [`vf-logistics-hackathon/docs/COCO_CLI_EVIDENCE.md`](./vf-logistics-hackathon/docs/COCO_CLI_EVIDENCE.md) | Reproducible evidence of Cortex Code CLI usage, with SQL a judge can re-run |
 | [`vf-logistics-hackathon/COMPLIANCE_CHECKLIST.md`](./vf-logistics-hackathon/COMPLIANCE_CHECKLIST.md) | Terms & Conditions compliance audit |
 | [`vf-logistics-hackathon/PRESENTATION_OUTLINE.md`](./vf-logistics-hackathon/PRESENTATION_OUTLINE.md) | Slide-by-slide deck outline |
-| [`vf-logistics-hackathon/VOICEOVER_SCRIPT_4MIN.md`](./vf-logistics-hackathon/VOICEOVER_SCRIPT_4MIN.md) | 4-minute demo narration script |
 
 ## Live prototype
 
-- **Public MVP UI (Mendix):** https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
-- **Analytics & operations dashboard (Streamlit in Snowflake):** source in [`streamlit_app/`](./streamlit_app) — the deployed app requires authenticated Snowflake access; read-only judge credentials are provided in the submission form.
+- **Public MVP UI (Mendix) — primary reviewer entry point, no Snowflake login required:** https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
+- **Analytics & operations dashboard (Streamlit in Snowflake):** source in [`streamlit_app/`](./streamlit_app). This is the technical proof surface shown in the submission video; a read-only Snowflake account can be provided on request, but it is optional bonus access, not required to evaluate the submission.
 
 ## Run the autonomous workflow
 
