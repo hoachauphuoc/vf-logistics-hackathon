@@ -10,6 +10,8 @@
 
 **Publicly accessible Mendix prototype (MVP link):** https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
 
+> This is hosted on a Mendix Free App tier, which sleeps after a period of inactivity. If the link has not been opened in a while, it may show a **"Resuming app"** screen for roughly 30-60 seconds — wait for it, then refresh the page once to load the homepage.
+
 This Mendix app is the operational UI that a compliance team would use to view shipments and investigation statuses (e.g., `Pending_Review` → `AI_Processed`).
 
 Important notes for judges:
