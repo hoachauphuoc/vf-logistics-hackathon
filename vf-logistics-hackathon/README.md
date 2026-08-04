@@ -145,6 +145,10 @@ python python/snowpark_risk_scoring.py --connection ayugbce-jx50275 --run-workfl
  "execution_time_ms":13392,"audit_trail":"WORKFLOW_AUDIT_LOG"}
 ```
 
+### Option F — From the Mendix UI itself (no CLI access needed)
+
+A judge who only has the public Mendix link (Section 0) can still trigger the exact same CLI-executed workflow, with no Snowflake login: open the **AI Assistant** chat panel (bottom-right of the Mendix homepage) and type `/run_pipeline`. Behind the scenes the panel shells out to the identical command as Option B — `snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');"` — and streams back the same step-by-step result (`STEP 1/5 DETECT_ANOMALIES` … `STEP 5/5 SAP_POST`, then the raw JSON output and the alert/decision it produced). This is the same orchestrator and the same audit trail as every other option on this page; the Mendix chat is just one more caller of it, not a separate code path.
+
 Trace a single PDF from file to decision:
 ```sql
 SELECT e.FILE_NAME, e.CONFIDENCE_SCORE, e.ALERT,
