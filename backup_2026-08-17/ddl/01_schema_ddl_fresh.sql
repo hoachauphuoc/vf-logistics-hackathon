@@ -1850,8 +1850,8 @@ END';
 CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()
 RETURNS VARCHAR
 LANGUAGE SQL
-COMMENT='Document intelligence stage: refreshes the stage directory (so files just uploaded with PUT are visible), scans LOGISTICS_STAGE for new PDFs, uses CORTEX.PARSE_DOCUMENT (OCR) + CORTEX.COMPLETE (mistral-large2) to extract identity, commercial and counterparty fields, computes a 4-factor confidence score, generates Alert/AlertResponse via AI_COMPLETE, and inserts into BILL_OF_LADING_EXTRACTED. The commercial fields (shipper, consignee, carrier, freight charges) are what allow SYNC_EXTRACTED_TO_BILL_OF_LADING to feed the fraud pipeline. Errors logged to ERROR_LOG.'
-EXECUTE AS OWNER
+COMMENT='Document intelligence stage: refreshes the stage directory, scans LOGISTICS_STAGE for new PDFs, uses CORTEX.PARSE_DOCUMENT (OCR) + CORTEX.COMPLETE (mistral-large2) to extract identity, commercial and counterparty fields, computes a 4-factor confidence score, generates Alert/AlertResponse via AI_COMPLETE, inserts into BILL_OF_LADING_EXTRACTED, then automatically promotes all extracted documents into the operational BILL_OF_LADING table via SYNC_EXTRACTED_TO_BILL_OF_LADING (idempotent — only syncs rows not yet promoted). This auto-promotion is safe because WORKFLOW_DETECT_AND_ACT explicitly excludes Pending_Review records from fraud scanning.'
+EXECUTE AS CALLER
 AS 'BEGIN
     LET processed NUMBER := 0;
     LET errors NUMBER := 0;
@@ -1962,7 +1962,11 @@ AS 'BEGIN
         END;
     END FOR;
 
-    RETURN ''Complete. Processed: '' || :processed::VARCHAR || '' | Errors: '' || :errors::VARCHAR;
+    -- Auto-promote extracted documents to BILL_OF_LADING (safe because detection
+    -- already filters out Pending_Review records, so no false positives from unverified data)
+    CALL MENDIX_APP.AGENTS.SYNC_EXTRACTED_TO_BILL_OF_LADING();
+
+    RETURN ''Complete. Processed: '' || :processed::VARCHAR || '' | Errors: '' || :errors::VARCHAR || '' | Synced to BILL_OF_LADING'';
 END';
 CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.REFRESH_PDF_PRESIGNED_URLS()
 RETURNS VARCHAR
@@ -2530,10 +2534,10 @@ BEGIN
         || ''","result":"'' || :v_result || ''"}'';
 END
 ';
-CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_DETECT_AND_ACT("P_QUEUE_LIMIT" NUMBER(38,0) DEFAULT 60)
+CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_DETECT_AND_ACT("P_QUEUE_LIMIT" NUMBER(38,0) DEFAULT 100)
 RETURNS VARCHAR
 LANGUAGE SQL
-COMMENT='Skill 1 - Automated fraud/compliance detection. Thresholds are DERIVED FROM THE DATA DISTRIBUTION (99th percentile of charges and weight, multiples of the peer median cost-per-kg) rather than hardcoded constants, so rules stay calibrated instead of either never firing or flooding the queue. Severity is graded: cost-per-kg above 10x the peer median is HIGH, 5-10x is MEDIUM, high absolute value or heavy weight alone is MEDIUM. Two safety mechanisms prevent alert storms: a per-rule cap per run, and BACKPRESSURE - when the open triage queue already exceeds P_QUEUE_LIMIT, detection reports the queue as saturated and creates no new alerts instead of piling on work nobody can process.'
+COMMENT='Skill 1 - Automated fraud/compliance detection. Thresholds are DERIVED FROM THE DATA DISTRIBUTION (99th percentile of charges and weight, multiples of the peer median cost-per-kg) rather than hardcoded constants, so rules stay calibrated instead of either never firing or flooding the queue. Severity is graded: cost-per-kg above 10x the peer median is HIGH, 5-10x is MEDIUM, high absolute value or heavy weight alone is MEDIUM. Two safety mechanisms prevent alert storms: a per-rule cap per run, and BACKPRESSURE - when the open triage queue already exceeds P_QUEUE_LIMIT, detection reports the queue as saturated and creates no new alerts instead of piling on work nobody can process. ONLY SCANS VALIDATED SHIPMENTS: excludes Pending_Review and DRAFT status records to avoid generating false positives on unverified data from document extraction.'
 EXECUTE AS CALLER
 AS '
 DECLARE
@@ -2558,7 +2562,7 @@ BEGIN
            MEDIAN(TOTAL_CHARGES / NULLIF(GROSS_WEIGHT_KGS,0))
     INTO :v_p99_charges, :v_p99_weight, :v_p95_cpk, :v_median_cpk
     FROM MENDIX_APP.AGENTS.BILL_OF_LADING
-    WHERE TOTAL_CHARGES IS NOT NULL AND GROSS_WEIGHT_KGS > 0;
+    WHERE TOTAL_CHARGES IS NOT NULL AND GROSS_WEIGHT_KGS > 0 AND STATUS NOT IN (''Pending_Review'', ''DRAFT'');
 
     IF (:v_queue_open >= :P_QUEUE_LIMIT) THEN
         v_throttled := TRUE;
