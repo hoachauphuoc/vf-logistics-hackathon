@@ -8,7 +8,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| (a) Complete profile (name, email, phone, country) | ⬜ Not confirmed | Must register on Contest Site before 08/02/2026 |
+| (a) Complete profile (name, email, phone, country) | ✅ Completed | Registered on Contest Site |
 | (b) The Idea | ✅ Yes | Intelligent Workflow Automation Agent for logistics fraud detection |
 | (c) The Prototype | ✅ Yes | VF Logistics Portal (Mendix public prototype at https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive) + Snowflake backend working end-to-end |
 | (d) Presentation materials + source code link | ✅ Yes | Source code: https://github.com/hoachauphuoc/vf-logistics-hackathon — README, presentation outline, CoCo CLI evidence and test report all included; recording scripts are intentionally kept local because judges do not need them |
@@ -116,6 +116,6 @@ props.put("password", password);
 | 11 | **Registration** (§4.1a) | ✅ team "Sora", 2 members, confirmed on the contest portal |
 | 12 | **Validation report** | ✅ `../docs/reference/TEST_REPORT_FINAL_2026-08-01.md` |
 | 13 | **Judge read-only access** | ✅ Optional `HACKATHON_JUDGE` account exists for Streamlit review, but it is positioned as bonus access rather than the primary prototype entry point; the primary low-friction reviewer path remains the public Mendix prototype + demo video |
-| 14 | **Submit through the portal Submissions tab** | ⬜ the only remaining action |
+| 14 | **Submit through the portal Submissions tab** | ✅ Completed | Submission uploaded through portal |
 
 **Deadline note:** the Terms & Conditions state the Submission Period closes **2026-08-02 23:59 IST**, while the contest portal countdown showed a later date. Treat 2026-08-02 as the binding deadline.
