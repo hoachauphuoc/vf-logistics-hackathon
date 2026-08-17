@@ -162,7 +162,38 @@ CREATE OR REPLACE PROCEDURE "CHECK_COMPLIANCE"("P_BL_ID" NUMBER(38,0)) RETURNS O
 -- NOTE: SNOWFLAKE_PUBLIC_DATA_FREE must be mounted from Snowflake Marketplace first:
 --   CALL SYSTEM$REQUEST_LISTING_AND_WAIT('GZTSZ290BV255', 120);
 --   CREATE DATABASE SNOWFLAKE_PUBLIC_DATA_FREE FROM LISTING 'GZTSZ290BV255';
-CREATE OR REPLACE PROCEDURE "WORKFLOW_SANCTIONS_SCREEN"("P_ENTITY_NAME" VARCHAR) RETURNS VARCHAR LANGUAGE SQL COMMENT='Screens entity names against sanctions lists using AI fuzzy matching. Returns risk level and matching details for compliance review.' EXECUTE AS CALLER AS 'DECLARE     v_match_count NUMBER DEFAULT 0;     v_result VARCHAR; BEGIN     SELECT COUNT(*) INTO :v_match_count     FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX     WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(:P_ENTITY_NAME) || ''%'';      IF (:v_match_count > 0) THEN         v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":'' || :v_match_count || '',"risk_level":"CRITICAL","action":"BLOCK - Entity appears on US Government Consolidated Screening List (Snowflake Marketplace data)"}'';     ELSE         v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":0,"risk_level":"CLEAR","action":"No matches on screening lists. Entity cleared for trade."}'';     END IF;      RETURN :v_result; END';
+--
+-- Screening reads through V_SANCTIONS_SCREENING_SOURCE rather than hitting the provider's
+-- tables directly. Reason (found 2026-08-17): the provider's *current* table
+-- (..._EXPORT_SCREENED_ENTITIES_INDEX) is empty and its point-in-time table
+-- (..._INDEX_PIT) only holds intervals closed on or before 2024-04-10 — the upstream feed
+-- has stopped updating. Querying the current table directly made every screen return
+-- matches_found = 0, silently disabling the sanctions-driven BLOCK branch. The view
+-- prefers the current table when it has rows and falls back to the snapshot otherwise,
+-- and exposes RECORD_BASIS so the freshness of the dependency is reported, not assumed.
+CREATE OR REPLACE VIEW V_SANCTIONS_SCREENING_SOURCE
+COMMENT='Single source of truth for export-restriction / sanctions screening from Marketplace listing GZTSZ290BV255. Prefers the provider CURRENT table; falls back to the point-in-time table, deduplicated by entity name. RECORD_BASIS reports which source each row came from.'
+AS
+WITH unioned AS (
+    SELECT EXPORT_RESTRICTED_ENTITY_NAME AS ENTITY_NAME, GEO_ID_COUNTRY, SOURCE, START_DATE,
+           'LIVE_CURRENT' AS RECORD_BASIS, 1 AS SOURCE_PRIORITY
+    FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
+    WHERE EXPORT_RESTRICTED_ENTITY_NAME IS NOT NULL
+    UNION ALL
+    SELECT EXPORT_RESTRICTED_ENTITY_NAME, GEO_ID_COUNTRY, SOURCE, START_DATE,
+           'HISTORICAL_SNAPSHOT_TO_2024_04_10', 2
+    FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX_PIT
+    WHERE EXPORT_RESTRICTED_ENTITY_NAME IS NOT NULL
+)
+SELECT ENTITY_NAME,
+       COALESCE(GEO_ID_COUNTRY, 'Unknown') AS COUNTRY,
+       SOURCE AS LIST_TYPE,
+       START_DATE AS EFFECTIVE_DATE,
+       RECORD_BASIS
+FROM unioned
+QUALIFY ROW_NUMBER() OVER (PARTITION BY UPPER(ENTITY_NAME) ORDER BY SOURCE_PRIORITY) = 1;
+
+CREATE OR REPLACE PROCEDURE "WORKFLOW_SANCTIONS_SCREEN"("P_ENTITY_NAME" VARCHAR) RETURNS VARCHAR LANGUAGE SQL COMMENT='Screens an entity name against the US International Trade Administration export-screened-entities data from Snowflake Marketplace listing GZTSZ290BV255, via V_SANCTIONS_SCREENING_SOURCE. Returns risk level, match count, and the data_basis of the list actually used. Fixed 2026-08-17: previously queried the provider CURRENT table directly, which had silently become empty, making every screen return CLEAR.' EXECUTE AS CALLER AS 'DECLARE     v_match_count NUMBER DEFAULT 0;     v_basis VARCHAR DEFAULT ''NONE'';     v_result VARCHAR; BEGIN     SELECT COUNT(*) INTO :v_match_count     FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE     WHERE UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(:P_ENTITY_NAME) || ''%'';      SELECT COALESCE(MAX(RECORD_BASIS), ''NONE'') INTO :v_basis     FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE;      IF (:v_match_count > 0) THEN         v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":'' || :v_match_count || '',"risk_level":"CRITICAL","data_basis":"'' || :v_basis || ''","action":"BLOCK - Entity appears on US Government Consolidated Screening List (Snowflake Marketplace listing GZTSZ290BV255)"}'';     ELSE         v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":0,"risk_level":"CLEAR","data_basis":"'' || :v_basis || ''","action":"No matches on screening lists. Entity cleared for trade."}'';     END IF;      RETURN :v_result; END';
 
 -- ============================================================
 -- SKILL 3: AI Investigation & Remediation
@@ -250,9 +281,9 @@ BEGIN
 
     BEGIN
         SELECT COUNT(*) INTO :v_sanction_hits
-        FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
-        WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_shipper, ''~none~'')) || ''%''
-           OR UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_consignee, ''~none~'')) || ''%'';
+        FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE
+        WHERE UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_shipper, ''~none~'')) || ''%''
+           OR UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_consignee, ''~none~'')) || ''%'';
     EXCEPTION
         WHEN OTHER THEN
             v_sanction_hits := -1;

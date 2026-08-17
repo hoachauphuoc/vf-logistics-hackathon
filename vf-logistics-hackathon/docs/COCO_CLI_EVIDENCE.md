@@ -35,8 +35,12 @@ The entire backend of this prototype — 20+ stored procedures, the orchestrator
 **How a judge verifies:**
 ```sql
 SHOW DATABASES LIKE 'SNOWFLAKE_PUBLIC_DATA_FREE';
-SELECT COUNT(*) FROM SNOWFLAKE_PUBLIC_DATA_FREE.CYBERSYN.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX;
--- Sanctions screening runs against live third-party data, not a mocked list.
+-- The provider's schema is PUBLIC_DATA_FREE. Its *current* table is empty (the upstream
+-- feed stopped updating), so query through the project's own screening view, which falls
+-- back to the point-in-time table and reports which basis it used:
+SELECT RECORD_BASIS, COUNT(*) FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE GROUP BY 1;
+CALL MENDIX_APP.AGENTS.WORKFLOW_SANCTIONS_SCREEN('Jsc Element');   -- expect risk_level CRITICAL
+-- Screening runs against real third-party government data, not a mocked list.
 ```
 
 ---
@@ -229,7 +233,63 @@ CoCo CLI was also used on the client side of the prototype:
 
 - Diagnosed why an inline PDF viewer worked in local preview but failed on the deployed Mendix cloud sandbox, by inspecting the packaged widget archives and confirming which static assets were missing after deployment — leading to the decision to drop third-party widgets in favour of the platform's native document viewer.
 - Extended the Mendix data-source SQL (`AI_COMPLETE` + `PROMPT` + `TO_FILE` over a staged PDF) and validated it against real staged Bill of Lading documents before it was pasted into the low-code microflow.
-- Removed a hardcoded service-account password from `CallCortexAgent.java`, replacing it with the `SNOWFLAKE_MENDIX_PASSWORD` environment variable (see `COMPLIANCE_CHECKLIST.md` §5(d)).
+- Removed a hardcoded service-account password from `CallCortexAgent.java`, replacing it first with an environment variable and ultimately with key-pair (JWT) authentication, which is what the action uses today (see `COMPLIANCE_CHECKLIST.md` §5(d)).
+
+---
+
+### 2.9 Refinement Phase: caught a silently dead sanctions-screening dependency (2026-08-17)
+
+**Problem:** after shortlisting, a re-verification pass through CoCo CLI found that the
+Marketplace provider's *current* screened-entities table had become **empty**, while the
+project's three screening consumers still queried it directly. Sanctions screening was
+therefore returning `matches_found: 0` for every entity — the sanctions-driven BLOCK
+branch of the rubric had been unreachable, and nothing in the output revealed it. The
+defect was masked because the AI still blocked on shell-company names and cost-per-kg, so
+decisions continued to look correctly differentiated.
+
+**CoCo CLI actions:**
+- Compared row counts across the provider's current and point-in-time tables, finding
+  `0` vs `2,394` rows and establishing that the upstream feed stops at `2024-04-10`.
+- Queried `INFORMATION_SCHEMA.PROCEDURES` / `.VIEWS` to enumerate **every** object
+  depending on the empty table, rather than fixing them one at a time as they broke —
+  three were found: `WORKFLOW_SANCTIONS_SCREEN`, `WORKFLOW_INVESTIGATE_ANOMALY`,
+  `V_AI_DECISION_EVAL`.
+- Built `V_SANCTIONS_SCREENING_SOURCE`, which prefers the provider's current table and
+  falls back to the point-in-time table, deduplicates by entity name, and exposes a
+  `RECORD_BASIS` column so the freshness of the dependency is reported rather than assumed.
+- Repointed all three consumers by rebuilding them **server-side** with
+  `REPLACE()` + `EXECUTE IMMEDIATE` over their own stored definitions, so a 10 KB procedure
+  body did not have to be retyped and could not be corrupted in transit.
+- Re-ran the orchestrator and the evaluation harness to confirm no regression.
+
+**How a judge verifies:**
+```sql
+-- 1. The provider's current table really is empty; the fallback really does have rows:
+SELECT COUNT(*) FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX;       -- 0
+SELECT RECORD_BASIS, COUNT(*) FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE GROUP BY 1;  -- 1,816 entities
+
+-- 2. Screening discriminates again:
+CALL MENDIX_APP.AGENTS.WORKFLOW_SANCTIONS_SCREEN('Jsc Element');          -- CRITICAL, matches_found > 0
+CALL MENDIX_APP.AGENTS.WORKFLOW_SANCTIONS_SCREEN('Viettel Electronics');  -- CLEAR, matches_found 0
+
+-- 3. No object still depends on the empty table (expect zero rows):
+SELECT PROCEDURE_NAME FROM MENDIX_APP.INFORMATION_SCHEMA.PROCEDURES
+WHERE PROCEDURE_DEFINITION ILIKE '%SCREENED_ENTITIES_INDEX%'
+  AND PROCEDURE_DEFINITION NOT ILIKE '%SCREENED_ENTITIES_INDEX_PIT%';
+
+-- 4. Pipeline and evaluation still pass after the change:
+CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');
+CALL MENDIX_APP.AGENTS.EVALUATE_AI_DECISIONS();   -- 95.9% adherence, 0 critical false negatives
+```
+
+**Honest outcome:** the fix restored a capability rather than changing any historical
+decision — none of the synthetic counterparty names match the real government list, so
+adherence stayed at 95.9%. The value is that a real sanctions hit would now be caught,
+and that the screening output states which data basis it used.
+
+A second, smaller defect was found in the same pass: `BL_SEARCH_CORPUS` had drifted from
+`BILL_OF_LADING` (27 shipments missing, 15 orphaned rows), so Cortex Search could not find
+the most recently ingested documents. Rebuilt and verified at 0 missing / 0 orphans.
 
 ---
 
@@ -245,5 +305,6 @@ CoCo CLI was also used on the client side of the prototype:
 | End-to-end workflow execution + audit verification | `WORKFLOW_AUDIT_LOG` (§2.6) |
 | Cost/operations management on a trial account | Suspended tasks and search service (§2.7) |
 | Full-stack debugging across Snowflake and the front end | Mendix integration and security fix (§2.8) |
+| **Catching a silently dead third-party dependency, and finding every consumer of it before fixing** | **`V_SANCTIONS_SCREENING_SOURCE` — screening discriminates again, with its data basis reported (§2.9)** |
 
 Every SQL statement quoted above is reproducible in the submitted Snowflake account using the read-only judge credentials documented in the submission form.

@@ -27,7 +27,7 @@ Maritime freight fraud (undervalued/overvalued cargo, shell-company shippers, sa
 
 - Continuously scans incoming shipments for anomalies
 - Reasons over context (not just static rules) to assess real risk
-- Screens counterparties against live government sanctions data
+- Screens counterparties against real US government export-restriction data sourced from Snowflake Marketplace
 - Takes autonomous action (block/escalate/clear) — with full audit trail for compliance
 
 **Measurable impact**: full detect → investigate → screen → remediate cycle completes in **~6-10 seconds** per shipment, vs. hours/days for manual compliance review. Every step records its own wall-clock duration, so this is verifiable rather than asserted — measured breakdown per alert: AI investigation ~4.4s, anomaly detection ~2.0s, remediation ~1.2s, sanctions screening ~0.2s. Reproduce it with:
@@ -73,7 +73,7 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
                     → WORKFLOW_AUDIT_LOG (full audit trail)
 ```
 
-**Snowflake features used**: Cortex Agent, Cortex AI (`COMPLETE` — mistral-large2), Cortex Analyst (text-to-SQL), Cortex Search (semantic BL search), Snowflake Marketplace (live sanctions data + FX rates), Dynamic Tables, Streams + Tasks, Streamlit.
+**Snowflake features used**: Cortex Agent, Cortex AI (`COMPLETE` — mistral-large2), Cortex Analyst (text-to-SQL), Cortex Search (semantic BL search), Snowflake Marketplace (real US government export-screening data + FX rates), Dynamic Tables, Streams + Tasks, Streamlit.
 
 **Languages used**: SQL (core workflow logic), **Python** (Snowpark risk scoring + Streamlit dashboard), **Java** (Mendix front-end integration).
 
@@ -84,7 +84,7 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
 | Skill | File | Purpose |
 |-------|------|---------|
 | 1. Fraud Detection & Scoring | [`skills/skill_1_fraud_detection.md`](skills/skill_1_fraud_detection.md) | Scans shipments against 3 anomaly rules (value, weight, suspicious party) |
-| 2. Compliance & Sanctions Screening | [`skills/skill_2_compliance_sanctions.md`](skills/skill_2_compliance_sanctions.md) | Rule-based compliance scoring + live Marketplace sanctions screening |
+| 2. Compliance & Sanctions Screening | [`skills/skill_2_compliance_sanctions.md`](skills/skill_2_compliance_sanctions.md) | Rule-based compliance scoring + Marketplace-sourced export-restriction screening |
 | 3. AI Investigation & Remediation | [`skills/skill_3_ai_investigation.md`](skills/skill_3_ai_investigation.md) | Cortex AI risk analysis + autonomous BLOCK/ESCALATE/CLEAR decision |
 
 ---
@@ -209,7 +209,7 @@ vf-logistics-hackathon/
 
 ## 6. Setup / Deployment Notes
 
-- **Mendix integration**: `CallCortexAgent.java` reads the Snowflake service-account password from the `SNOWFLAKE_MENDIX_PASSWORD` environment variable (never hardcoded — see `COMPLIANCE_CHECKLIST.md` Section 5 for rationale).
+- **Mendix integration**: `CallCortexAgent.java` authenticates to Snowflake with **key-pair (JWT) authentication** — `authenticator=SNOWFLAKE_JWT` plus a private key file (`snowflake_key.p8`) read from the Mendix runtime resources directory at request time. No password or key material is present in the source or in this repository (`*.p8` and `*.pem` are git-ignored); only the public key is registered on the Snowflake service user. This replaced an earlier password-based approach — see `COMPLIANCE_CHECKLIST.md` Section 5 for that history.
 - **Snowflake Marketplace dependency**: `WORKFLOW_SANCTIONS_SCREEN` requires the free "Snowflake Public Data (Free)" listing mounted as `SNOWFLAKE_PUBLIC_DATA_FREE`:
   ```sql
   CALL SYSTEM$REQUEST_LISTING_AND_WAIT('GZTSZ290BV255', 120);
@@ -235,6 +235,7 @@ vf-logistics-hackathon/
 Stated up front rather than left for a reviewer to discover:
 
 - **The shipment data is synthetic.** `BILL_OF_LADING` is self-generated maritime simulation data, not a real carrier feed. The sanctions/export-restriction data it is screened against **is real** (Snowflake Marketplace, listing `GZTSZ290BV255`).
+- **That screening list is real but not currently refreshed, and the code now says so.** The Marketplace provider's *current* screened-entities table is empty and its point-in-time table ends **2024-04-10**, so the effective screening list is a real US government historical snapshot rather than a live feed. This was found during the Refinement Phase, and it had a functional consequence worth stating plainly: because all three consumers queried the empty current table, **every sanctions screen was returning zero matches** and the sanctions-driven BLOCK branch was unreachable. They now read `V_SANCTIONS_SCREENING_SOURCE`, which prefers the provider's current table, falls back to the point-in-time snapshot, and returns a `data_basis` / `RECORD_BASIS` value so the freshness is reported instead of assumed. Verification SQL is in [`docs/COCO_CLI_EVIDENCE.md`](docs/COCO_CLI_EVIDENCE.md) §2.9.
 - **Detection thresholds are calibrated to that distribution, not invented.** They are recomputed on every run from percentiles of the live data. Inspect the values actually used:
   ```sql
   CALL MENDIX_APP.AGENTS.WORKFLOW_DETECT_AND_ACT();   -- returns the thresholds it used
@@ -255,28 +256,28 @@ See [`COMPLIANCE_CHECKLIST.md`](COMPLIANCE_CHECKLIST.md) for the full Terms & Co
 - Entry Requirements checklist (Section 4)
 - Entry Warranties compliance (Section 5)
 
-For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_EVIDENCE.md`](docs/COCO_CLI_EVIDENCE.md) — it documents eight engineering sessions with the exact SQL a judge can re-run to verify each outcome.
+For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_EVIDENCE.md`](docs/COCO_CLI_EVIDENCE.md) — it documents nine engineering sessions with the exact SQL a judge can re-run to verify each outcome, including the Refinement Phase session that found a silently dead third-party dependency.
 
 ---
 
 ## 9. Key Differentiators
 
-1. **The AI actually decides, the decision is auditable, and the decision quality is measured** — `WORKFLOW_INVESTIGATE_ANOMALY` builds a quantitative evidence pack (cost-per-kg vs. the peer median across 10,000+ shipments, plus a live sanctions-list match count from Marketplace data), applies an explicit BLOCK / ESCALATE / CLEAR rubric via Cortex AI, and **persists both the decision and its one-line reason** to `FRAUD_ALERT`. The orchestrator executes *that* decision — the action is not hardcoded. Measured outcome across **336 decisions**: `BLOCK 42 / ESCALATE 42 / CLEAR 256` — genuinely differentiated, not a uniform fallback. Verify with `CALL MENDIX_APP.AGENTS.EVALUATE_AI_DECISIONS();`
-2. **Decision quality is measured, not asserted** — `V_AI_DECISION_EVAL` recomputes, in SQL, the decision the documented rubric mandates for the same evidence and compares it to what the model actually decided. Current result: **95.8% policy adherence with 0 critical false negatives** (nothing that should have been blocked was cleared). This also captured a measurable engineering win: moving the numeric threshold comparison out of the prompt and into SQL raised adherence from **78.5% to 100%** on the decisions taken after the change, because language models are unreliable at threshold arithmetic while being good at contextual judgement.
+1. **The AI actually decides, the decision is auditable, and the decision quality is measured** — `WORKFLOW_INVESTIGATE_ANOMALY` builds a quantitative evidence pack (cost-per-kg vs. the peer median across 10,000+ shipments, plus a sanctions-list match count queried from Marketplace data), applies an explicit BLOCK / ESCALATE / CLEAR rubric via Cortex AI, and **persists both the decision and its one-line reason** to `FRAUD_ALERT`. The orchestrator executes *that* decision — the action is not hardcoded. Measured outcome across **345 decisions** (as of 2026-08-17): `BLOCK 43 / ESCALATE 42 / CLEAR 260` — genuinely differentiated, not a uniform fallback. Verify with `CALL MENDIX_APP.AGENTS.EVALUATE_AI_DECISIONS();`
+2. **Decision quality is measured, not asserted** — `V_AI_DECISION_EVAL` recomputes, in SQL, the decision the documented rubric mandates for the same evidence and compares it to what the model actually decided. Current result: **95.9% policy adherence with 0 critical false negatives** (nothing that should have been blocked was cleared) over the **341** decisions the evaluator can score. That is 4 fewer than the 345 above, and the reason is stated rather than hidden: the evaluator joins each alert back to its shipment row to recompute cost-per-kg, and 4 historical alerts point at shipment rows that were removed during a demo-data cleanup, so they have no evidence pack left to re-score. This measurement also captured a concrete engineering win: moving the numeric threshold comparison out of the prompt and into SQL raised adherence from **78.5% to 100%** on the decisions taken after the change, because language models are unreliable at threshold arithmetic while being good at contextual judgement.
 3. **Calibrated detection instead of magic numbers** — thresholds are derived from the live data distribution (99th percentile of charges and weight, multiples of the peer median cost-per-kg). The previous hardcoded `> $50,000` rule matched only 15 of 10,025 shipments while a `> 30,000 kg` rule matched 24.5% of them; both are now percentile-based and graded by severity. Detection also applies **backpressure** — it stops creating alerts when the open triage queue is saturated rather than piling on work nobody can process.
-4. **Autonomous multi-step reasoning** — Detect → Investigate (Cortex AI) → Screen (live Marketplace data) → Remediate → ERP post, chained without human intervention, and **batched**: one call can work through many alerts (`CALL WORKFLOW_FULL_PIPELINE_V2('AUTO', 10)`), across both HIGH and MEDIUM severity so no tier is abandoned in the queue.
+4. **Autonomous multi-step reasoning** — Detect → Investigate (Cortex AI) → Screen (Marketplace-sourced screening data) → Remediate → ERP post, chained without human intervention, and **batched**: one call can work through many alerts (`CALL WORKFLOW_FULL_PIPELINE_V2('AUTO', 10)`), across both HIGH and MEDIUM severity so no tier is abandoned in the queue.
 5. **CLI-native execution** — the exact same workflow runs identically via SQL CLI, CoCo CLI (natural language), and Python/Snowpark
-6. **Real third-party data integration** — sanctions screening against a live Snowflake Marketplace dataset, not a mocked list
-5. **Full audit trail with explanations** — every step is logged to `WORKFLOW_AUDIT_LOG` with the AI decision and reason recorded inline, so a compliance reviewer can see *why* a shipment was blocked or cleared, not just that something happened
-6. **Production-shaped**: defensive error handling (`LIMIT 1` on SELECT INTO, AI retry wrapper, graceful skip when no alert qualifies, sanctions-lookup fallback), built on a real Mendix front-end with JDBC integration
-7. **Demo-ready analytics UI**: the Streamlit dashboard was browser-verified and includes a dedicated *Autonomous AI Decisions* panel exposing every decision, its reason, and the full model risk assessment
+6. **Real third-party data integration** — screening runs against a real US government export-screened-entities dataset obtained from Snowflake Marketplace (listing `GZTSZ290BV255`), not a mocked list. The data is genuinely third-party, but it is **not continuously refreshed**: the provider's current table is empty and its point-in-time table stops at 2024-04-10, so the screening list is a real historical government snapshot rather than a live feed. `V_SANCTIONS_SCREENING_SOURCE` reports which basis each match came from (`RECORD_BASIS`) and automatically prefers the provider's current table if it is ever repopulated — so the freshness of this dependency is visible instead of assumed.
+7. **Full audit trail with explanations** — every step is logged to `WORKFLOW_AUDIT_LOG` with the AI decision and reason recorded inline, so a compliance reviewer can see *why* a shipment was blocked or cleared, not just that something happened
+8. **Production-shaped**: defensive error handling (`LIMIT 1` on SELECT INTO, AI retry wrapper, graceful skip when no alert qualifies, sanctions-lookup fallback), built on a real Mendix front-end with JDBC integration
+9. **Demo-ready analytics UI**: the Streamlit dashboard was browser-verified and includes a dedicated *Autonomous AI Decisions* panel exposing every decision, its reason, and the full model risk assessment
 
 ---
 
-## 10. Demo-Ready Status (2026-07-27)
+## 10. Demo-Ready Status (last re-validated 2026-08-17)
 
 - Main Streamlit dashboard verified live in Snowflake after final UI/chart fixes
-- KPI totals **at last validation (2026-08-02)**: approximately **10,017 shipments**, **$52.9M revenue**, **~1,197 pending**, **12 carriers**, **~1,740 approved**, **~2,884 in transit**. These are point-in-time figures from a live, autonomous system — status and charges change as the pipeline runs, so the dashboard may show different numbers by the time a judge looks. To see the current live values, run:
+- KPI totals **at last validation (2026-08-17)**: approximately **10,017 shipments**, **$52.87M revenue**, **~1,195 pending**, **12 carriers**, **~1,740 approved**, **~2,882 in transit**. These are point-in-time figures from a live, autonomous system — status and charges change as the pipeline runs, so the dashboard may show different numbers by the time a judge looks. To see the current live values, run:
   ```sql
   -- note: STATUS values are mixed-case in the source data ('APPROVED' but 'In_Transit')
   SELECT COUNT(*) AS SHIPMENTS, SUM(TOTAL_CHARGES) AS REVENUE,
@@ -287,6 +288,7 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
   FROM MENDIX_APP.AGENTS.BILL_OF_LADING;
   ```
 - Carrier, route, status, and weekly trend charts were corrected to avoid Plotly rendering distortions in Streamlit-in-Snowflake
-- Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**), AI usage, and pipeline context display correctly during the demo
+- Live Data & Pipeline section was cleaned up so FX rates, sanctions count (**2,394 entities**, re-verified 2026-08-17), AI usage, and pipeline context display correctly during the demo
 - Write-capable controls were removed from Streamlit pages that run under Snowflake owner's-rights execution, so reviewer access cannot accidentally mutate shared config or shipment state through the UI
-- Full system validation report is captured in [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md)
+- `BL_SEARCH_SERVICE` (Cortex Search) is currently **live and serving** (`indexing_state = ACTIVE`), so semantic search works immediately with no manual resume step. Note that a *suspended* Cortex Search Service does **not** auto-resume on query — it raises `error_code 399131`; if it is ever suspended to save credits, resume it explicitly with `ALTER CORTEX SEARCH SERVICE MENDIX_APP.AGENTS.BL_SEARCH_SERVICE RESUME;`
+- Full system validation report is captured in [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md), including a **2026-08-17 re-validation** section confirming the pipeline still runs correctly after an extended idle period

@@ -19,7 +19,7 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 - *"From scanned document and shipment data to autonomous action in under 10 seconds — executed inside Snowflake and triggered from the CLI."*
 
 **Speaker notes:**
-- "This demo shows an autonomous compliance workflow for maritime logistics: detect anomalies, investigate with AI, screen sanctions using live Marketplace data, then take action with a full audit trail."
+- "This demo shows an autonomous compliance workflow for maritime logistics: detect anomalies, investigate with AI, screen counterparties against real government export-screening data from Snowflake Marketplace, then take action with a full audit trail."
 
 ---
 
@@ -71,11 +71,11 @@ This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, 
 | Skill | What it does | Snowflake feature |
 |------|--------------|------------------|
 | 1. Fraud Detection & Scoring | 3 anomaly rules over shipment data | SQL, Streams |
-| 2. Compliance & Sanctions Screening | Rule scoring + live sanctions match | Snowflake Marketplace |
+| 2. Compliance & Sanctions Screening | Rule scoring + Marketplace-sourced export-restriction match | Snowflake Marketplace |
 | 3. AI Investigation & Remediation | Risk reasoning + autonomous action | Cortex AI (`COMPLETE`) |
 
 **Speaker notes:**
-- "Skill 2 is a key differentiator: sanctions screening uses a live Marketplace dataset, not a static file."
+- "Skill 2 is a key differentiator: screening runs against a real US government export-screening dataset obtained from Snowflake Marketplace, not a static file we shipped ourselves. We also report which data basis each match came from, because the provider's feed currently stops at April 2024 — real third-party data, stated accurately rather than claimed to be live."
 
 ---
 

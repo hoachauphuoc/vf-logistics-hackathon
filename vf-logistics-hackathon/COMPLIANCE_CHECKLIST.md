@@ -33,7 +33,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | Dataset | Source | License | Notes |
 |---------|--------|---------|-------|
 | BILL_OF_LADING (~10,000 rows, live count) | Self-generated synthetic data | N/A (self-created) | Maritime logistics simulation data |
-| Snowflake Public Data (Free) — `INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX` | Snowflake Marketplace (free listing `GZTSZ290BV255`) | Free, Snowflake-provided | Used for sanctions screening — meets "Marketplace" criterion in Section 9 |
+| Snowflake Public Data (Free) — `INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX` and `..._INDEX_PIT`, read via `V_SANCTIONS_SCREENING_SOURCE` | Snowflake Marketplace (free listing `GZTSZ290BV255`) | Free, Snowflake-provided | Used for export-restriction screening — meets "Marketplace" criterion in Section 9. Provider's current table is empty and its point-in-time data ends 2024-04-10, so the effective list is a real government historical snapshot (see Section 5.1) |
 | `V_EXCHANGE_RATES` | Snowflake-hosted reference data in account | Snowflake-provided | Used in the Streamlit monitoring panel |
 | HS_CODE_REFERENCE | Self-generated (based on public HS Code standard) | Public reference data | |
 
@@ -54,24 +54,54 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | (a) No offensive content | ✅ Compliant | |
 | (b) Original content | ✅ Compliant | All code written via CoCo CLI |
 | (c) No third-party IP violation | ✅ Compliant | |
-| (d) No confidential/proprietary info | ✅ **FIXED** | Password moved to environment variable `SNOWFLAKE_MENDIX_PASSWORD` |
+| (d) No confidential/proprietary info | ✅ **FIXED** | Hardcoded password removed, then superseded entirely by key-pair (JWT) authentication — no secret of any kind in the source |
 | (e) No privacy/publicity right violation | ✅ Compliant | Data is synthetic, PII_FLAG exists but uses fictitious company names |
 | (h) No malicious code | ✅ Compliant | |
-| (i) Not misleading, accurate | ✅ Compliant | |
+| (i) Not misleading, accurate | ✅ Compliant | Re-audited 2026-08-17: wording about the Marketplace screening dataset was corrected from "live" to "real government data, historical snapshot to 2024-04-10", after verifying the provider's feed had stopped updating (see Section 5.1) |
 
-### ✅ Security fix completed
+### ✅ Security fix completed — and then improved
+
+The original defect was a literal password compiled into the Mendix Java action. It was
+first moved to an environment variable, and the credential itself was subsequently
+**replaced with key-pair (JWT) authentication**, which is the mechanism in use today:
+
 ```java
 // BEFORE (insecure — a literal password was compiled into the Java action;
 // the value is redacted here and has since been rotated in Snowflake):
 props.put("password", "<REDACTED — was a hardcoded literal>");
 
-// AFTER (secure):
+// INTERIM (better — no secret in source, but still a shared password):
 String password = System.getenv("SNOWFLAKE_MENDIX_PASSWORD");
-if (password == null || password.isEmpty()) {
-    return "Configuration error: SNOWFLAKE_MENDIX_PASSWORD environment variable is not set.";
-}
 props.put("password", password);
+
+// CURRENT (key-pair / JWT — no password exists for this user at all):
+props.put("authenticator", "SNOWFLAKE_JWT");
+props.put("private_key_file", privateKeyPath);   // .p8 in Mendix runtime resources, git-ignored
 ```
+
+`MENDIX_SERVICE_USER` has `has_password = false` and `has_rsa_public_key = true` in
+Snowflake, so the key-pair path is verifiable rather than merely claimed.
+
+## 5.1 Accuracy re-audit of the Marketplace dependency (2026-08-17)
+
+During the Refinement Phase the screening dependency was re-verified against the live
+account, and two problems were found and fixed — recorded here because Warranty (i)
+requires the Entry not to be misleading:
+
+1. **Functional defect:** `WORKFLOW_SANCTIONS_SCREEN`, `WORKFLOW_INVESTIGATE_ANOMALY` and
+   `V_AI_DECISION_EVAL` all queried the provider's *current* table
+   (`..._EXPORT_SCREENED_ENTITIES_INDEX`), which had silently become **empty**. Every
+   screen therefore returned `matches_found: 0` regardless of the entity name, making the
+   sanctions-driven BLOCK branch unreachable. All three objects were repointed to a new
+   view, `V_SANCTIONS_SCREENING_SOURCE`, which prefers the provider's current table and
+   falls back to its point-in-time table. Screening now correctly returns
+   `risk_level: CRITICAL` for a listed entity (verified against `Jsc Element`) and `CLEAR`
+   for an unlisted one.
+2. **Wording correction:** the dataset was previously described as "live" / "real-time"
+   sanctions data. The data is genuinely real US government export-screening data from
+   Marketplace, but the provider's feed stops at **2024-04-10**, so the documentation now
+   describes it as a real historical snapshot and the screening output reports its
+   `data_basis` explicitly.
 
 ## 6. Section 9 — Judging Criteria
 
@@ -98,7 +128,7 @@ props.put("password", password);
 
 ---
 
-## Summary: submission readiness (2026-08-02, final)
+## Summary: submission readiness (2026-08-02 submitted · re-verified 2026-08-17 for the Refinement Phase)
 
 | # | Item | Status |
 |---|---|---|
@@ -118,4 +148,4 @@ props.put("password", password);
 | 13 | **Judge read-only access** | ✅ Optional `HACKATHON_JUDGE` account exists for Streamlit review, but it is positioned as bonus access rather than the primary prototype entry point; the primary low-friction reviewer path remains the public Mendix prototype + demo video |
 | 14 | **Submit through the portal Submissions tab** | ✅ Completed | Submission uploaded through portal |
 
-**Deadline note:** the Terms & Conditions state the Submission Period closes **2026-08-02 23:59 IST**, while the contest portal countdown showed a later date. Treat 2026-08-02 as the binding deadline.
+**Deadline note:** the Terms & Conditions state the Submission Period closed **2026-08-02 23:59 IST**, and that submission was completed. The entry was subsequently **shortlisted**, opening a **Refinement Phase with a hard deadline of 2026-08-23 23:59 IST** for final refinement and optimisation. All items above refer to the original submission; refinement work carried out after shortlisting is recorded in Section 9 of [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md).

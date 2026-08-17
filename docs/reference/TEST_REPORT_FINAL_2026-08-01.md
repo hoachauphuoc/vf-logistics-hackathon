@@ -135,7 +135,7 @@ The role is deliberately read-only: it cannot `CALL` the workflow procedures, so
 |---|---|---|
 | `COMPUTE_WH` | Suspended, `AUTO_SUSPEND=60s`, `AUTO_RESUME=true` | resumes in seconds on the first query |
 | All 7 tasks | Suspended | `TASK_PROCESS_NEW_BL` now calls `WORKFLOW_INGEST_AND_DECIDE`; `RESUME` it for hands-off operation |
-| `BL_SEARCH_SERVICE` (Cortex Search) | Suspended | **must be resumed manually before using semantic search** — it does *not* auto-resume |
+| `BL_SEARCH_SERVICE` (Cortex Search) | Suspended at submission time | **must be resumed manually before using semantic search** — it does *not* auto-resume. Re-checked 2026-08-17: the service is now `ACTIVE` and serving, so no resume step is needed today (see Section 9) |
 | Resource monitor | `VF_LOGISTICS_MONITOR` attached to `COMPUTE_WH` | guards the trial credit |
 
 ---
@@ -150,6 +150,44 @@ The role is deliberately read-only: it cannot `CALL` the workflow procedures, so
 | Free-text ports overflow `PORT_OF_*_LOCODE` (10 chars) | Promotion aborted with a truncation error | extract the UN/LOCODE, truncate every text column |
 | Orchestrator hard-coded `ESCALATE` and discarded the AI's recommendation | The workflow only *looked* autonomous | decision parsed, persisted and executed |
 | `RESOLUTION_NOTES` held generic template text | No explanation of why an action was taken | AI reason written into the notes and notification |
+
+---
+
+## 9. Re-validation for the Refinement Phase (2026-08-17)
+
+The system was idle (no pipeline calls) between 2026-08-02 and 2026-08-16 while a keep-alive ping (homepage-only) held the Mendix Free App awake. On 2026-08-17 the full pipeline was re-run cold, after 15 days of no workflow activity, to confirm nothing had degraded:
+
+```sql
+CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');
+```
+
+```json
+{"workflow":"FULL_PIPELINE_V2","status":"COMPLETED","alerts_processed":1,
+ "decisions":{"blocked":0,"escalated":0,"cleared":1},
+ "sap_documents_posted":1,"ai_decision":"CLEAR",
+ "ai_reason":"Sanctions matches = 0, cost-per-kg band is NORMAL_AT_OR_BELOW_5X_MEDIAN, and both counterparties are recognisable real businesses.",
+ "shipper_screened":"Viettel Electronics","execution_time_ms":13192}
+```
+
+Updated AI decision-quality metric (`CALL EVALUATE_AI_DECISIONS();`), now over 341 decisions (up from 336 at submission time):
+
+| Metric | 2026-08-02 (submission) | 2026-08-17 (refinement) |
+|---|---|---|
+| Decisions evaluated | 336 | 341 |
+| Policy adherence | 95.8% | 95.9% |
+| Critical false negatives (should-BLOCK cleared) | 0 | 0 |
+
+Current live KPI snapshot: **10,017 shipments**, **$52.87M revenue**, **12 carriers**, 1,195 pending, 1,740 approved, 2,882 in transit — consistent with the submission-time figures, confirming the dataset has not drifted or corrupted during the idle period.
+
+**Conclusion:** the pipeline, AI decision logic, and audit trail all remain fully functional after an extended idle period with only homepage keep-alive traffic — no regression found.
+
+### Defect found and fixed during this re-validation
+
+| Defect | Impact | Fix |
+|---|---|---|
+| `BL_SEARCH_CORPUS` had drifted out of sync with `BILL_OF_LADING` — 27 shipments missing from the corpus and 15 orphaned corpus rows pointing at shipments deleted during the 2026-08-02 demo-data cleanup | Cortex Search could not find the most recently ingested shipments, including the PDF-ingested ones that the document-to-decision story depends on; semantic search silently returned nothing for them | Rebuilt the corpus with `INSERT OVERWRITE ... SELECT FROM BILL_OF_LADING`. Verified afterwards: 10,017 corpus rows = 10,017 shipment rows, **0 missing, 0 orphans** |
+
+Root cause: `BL_SEARCH_CORPUS` is populated by an explicit `INSERT`, not by a Dynamic Table or Stream, so it does not track inserts/deletes on `BILL_OF_LADING` automatically. Re-run the rebuild statement (it is included at the bottom of `backup_2026-08-17/ddl/04_load_data.sql`) after any bulk change to the shipment table.
 
 ---
 
