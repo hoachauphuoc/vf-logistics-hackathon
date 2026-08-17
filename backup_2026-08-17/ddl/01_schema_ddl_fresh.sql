@@ -618,8 +618,7 @@ create or replace view MENDIX_APP.AGENTS.V_AI_DECISION_EVAL(
 	IS_MATCH,
 	AI_DECISION_REASON,
 	AI_ANALYZED_AT
-) COMMENT='Evaluation of AI decision quality. EXPECTED_DECISION is derived deterministically in SQL from the same documented rubric the model is given (sanctions matches, cost-per-kg band vs peer median, shell-company name patterns, extraction confidence). This measures POLICY ADHERENCE - whether the model faithfully applies the written compliance policy - which is the property that matters for an auditable compliance system. It is rule-derived, not human-labelled, and that is stated openly.'
- as
+) as
 WITH med AS (
     SELECT MEDIAN(TOTAL_CHARGES / NULLIF(GROSS_WEIGHT_KGS, 0)) AS MED_CPK
     FROM MENDIX_APP.AGENTS.BILL_OF_LADING
@@ -642,9 +641,9 @@ evidence AS (
         ROUND((b.TOTAL_CHARGES / NULLIF(b.GROSS_WEIGHT_KGS, 0)) / NULLIF(m.MED_CPK, 0), 2) AS CPK_MULTIPLE,
         CASE WHEN EXISTS (
             SELECT 1
-            FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX s
-            WHERE UPPER(s.EXPORT_RESTRICTED_ENTITY_NAME) LIKE '%' || UPPER(NVL(b.SHIPPER_NAME, '~none~')) || '%'
-               OR UPPER(s.EXPORT_RESTRICTED_ENTITY_NAME) LIKE '%' || UPPER(NVL(b.CONSIGNEE_NAME, '~none~')) || '%'
+            FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE s
+            WHERE UPPER(s.ENTITY_NAME) LIKE '%' || UPPER(NVL(b.SHIPPER_NAME, '~none~')) || '%'
+               OR UPPER(s.ENTITY_NAME) LIKE '%' || UPPER(NVL(b.CONSIGNEE_NAME, '~none~')) || '%'
         ) THEN 1 ELSE 0 END AS SANCTIONS_HIT,
         CASE WHEN UPPER(NVL(b.SHIPPER_NAME, '')) LIKE '%SUSPICIOUS%'
                   OR UPPER(NVL(b.SHIPPER_NAME, '')) LIKE '%UNKNOWN%'
@@ -845,6 +844,36 @@ SELECT
 FROM port_stations ps
 LEFT JOIN latest_temp lt 
     ON ps.STATION_ID = lt.NOAA_WEATHER_STATION_ID AND lt.RN = 1;
+create or replace view MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE(
+	ENTITY_NAME,
+	COUNTRY,
+	LIST_TYPE,
+	EFFECTIVE_DATE,
+	RECORD_BASIS
+) COMMENT='Single source of truth for export-restriction / sanctions screening. Reads the Snowflake Marketplace listing GZTSZ290BV255 (US International Trade Administration screened-entities data). Prefers the provider''s CURRENT table when it has rows; falls back to the point-in-time (_PIT) table otherwise, deduplicated by entity name. This fallback exists because the provider''s CURRENT table is empty as of 2026-08-17 and the _PIT table only holds intervals closed on or before 2024-04-10 — i.e. the upstream feed has stopped updating. RECORD_BASIS tells a reviewer exactly which source each row came from, so the freshness of the screening data is never overstated.'
+ as
+WITH unioned AS (
+    SELECT EXPORT_RESTRICTED_ENTITY_NAME AS ENTITY_NAME,
+           GEO_ID_COUNTRY, SOURCE, START_DATE,
+           'LIVE_CURRENT' AS RECORD_BASIS,
+           1 AS SOURCE_PRIORITY
+    FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
+    WHERE EXPORT_RESTRICTED_ENTITY_NAME IS NOT NULL
+    UNION ALL
+    SELECT EXPORT_RESTRICTED_ENTITY_NAME,
+           GEO_ID_COUNTRY, SOURCE, START_DATE,
+           'HISTORICAL_SNAPSHOT_TO_2024_04_10',
+           2
+    FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX_PIT
+    WHERE EXPORT_RESTRICTED_ENTITY_NAME IS NOT NULL
+)
+SELECT ENTITY_NAME,
+       COALESCE(GEO_ID_COUNTRY, 'Unknown') AS COUNTRY,
+       SOURCE AS LIST_TYPE,
+       START_DATE AS EFFECTIVE_DATE,
+       RECORD_BASIS
+FROM unioned
+QUALIFY ROW_NUMBER() OVER (PARTITION BY UPPER(ENTITY_NAME) ORDER BY SOURCE_PRIORITY) = 1;
 create or replace view MENDIX_APP.AGENTS.V_SHIPMENT_KPI_STATIC(
 	TOTAL_SHIPMENTS,
 	SAP_POSTED,
@@ -2859,7 +2888,7 @@ END
 CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_INVESTIGATE_ANOMALY("P_ALERT_ID" NUMBER(38,0))
 RETURNS VARCHAR
 LANGUAGE SQL
-COMMENT='Skill 3 - AI investigation. Builds a quantitative evidence pack (cost-per-kg vs peer median, live sanctions match count, and - for PDF-ingested shipments - the AI extraction confidence). The cost-per-kg band (over 10x median / 5-10x / at or below 5x) is computed DETERMINISTICALLY IN SQL and handed to the model as a label, because language models are unreliable at numeric threshold comparisons; the model then applies the rubric and weighs contextual evidence (sanctions, counterparty names, document provenance). The decision contract is enforced by a JSON response schema with the decision constrained to an enum, plus one repair retry before falling back to human review. Real token usage returned by Cortex is recorded in AI_CALL_LOG.'
+COMMENT='Skill 3 - AI investigation. Builds a quantitative evidence pack (cost-per-kg vs peer median, sanctions match count via V_SANCTIONS_SCREENING_SOURCE, and - for PDF-ingested shipments - the AI extraction confidence). The cost-per-kg band is computed DETERMINISTICALLY IN SQL and handed to the model as a label, because language models are unreliable at numeric threshold comparisons; the model then applies the rubric and weighs contextual evidence. The decision contract is enforced by a JSON response schema with the decision constrained to an enum, plus one repair retry before falling back to human review. Real token usage returned by Cortex is recorded in AI_CALL_LOG. FIXED 2026-08-17: the sanctions lookup previously queried the Marketplace providers CURRENT table directly, which had silently become empty, so the evidence pack always reported 0 sanctions hits and the sanctions-driven BLOCK branch was unreachable.'
 EXECUTE AS CALLER
 AS '
 DECLARE
@@ -2934,9 +2963,9 @@ BEGIN
 
     BEGIN
         SELECT COUNT(*) INTO :v_sanction_hits
-        FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
-        WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_shipper, ''~none~'')) || ''%''
-           OR UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_consignee, ''~none~'')) || ''%'';
+        FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE
+        WHERE UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_shipper, ''~none~'')) || ''%''
+           OR UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(NVL(:v_consignee, ''~none~'')) || ''%'';
     EXCEPTION
         WHEN OTHER THEN v_sanction_hits := -1;
     END;
@@ -3063,20 +3092,24 @@ END
 CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.WORKFLOW_SANCTIONS_SCREEN("P_ENTITY_NAME" VARCHAR)
 RETURNS VARCHAR
 LANGUAGE SQL
-COMMENT='Screens entity names against sanctions lists using AI fuzzy matching. Returns risk level and matching details for compliance review.'
+COMMENT='Screens an entity name against the US International Trade Administration export-screened-entities data from Snowflake Marketplace listing GZTSZ290BV255, via V_SANCTIONS_SCREENING_SOURCE. Returns risk level, match count, and the DATA_BASIS of the list actually used, so a reviewer can see whether the match came from the provider''s current feed or from the historical snapshot (the provider''s current table is empty as of 2026-08-17 and its point-in-time data stops at 2024-04-10). Previously this procedure queried the provider''s CURRENT table directly, which had silently become empty — making every screen return CLEAR regardless of the entity name. Fixed 2026-08-17.'
 EXECUTE AS CALLER
 AS 'DECLARE
     v_match_count NUMBER DEFAULT 0;
+    v_basis VARCHAR DEFAULT ''NONE'';
     v_result VARCHAR;
 BEGIN
     SELECT COUNT(*) INTO :v_match_count
-    FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.INTERNATIONAL_TRADE_ADMINISTRATION_EXPORT_SCREENED_ENTITIES_INDEX
-    WHERE UPPER(EXPORT_RESTRICTED_ENTITY_NAME) LIKE ''%'' || UPPER(:P_ENTITY_NAME) || ''%'';
+    FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE
+    WHERE UPPER(ENTITY_NAME) LIKE ''%'' || UPPER(:P_ENTITY_NAME) || ''%'';
+
+    SELECT COALESCE(MAX(RECORD_BASIS), ''NONE'') INTO :v_basis
+    FROM MENDIX_APP.AGENTS.V_SANCTIONS_SCREENING_SOURCE;
 
     IF (:v_match_count > 0) THEN
-        v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":'' || :v_match_count || '',"risk_level":"CRITICAL","action":"BLOCK - Entity appears on US Government Consolidated Screening List (Snowflake Marketplace data)"}'';
+        v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":'' || :v_match_count || '',"risk_level":"CRITICAL","data_basis":"'' || :v_basis || ''","action":"BLOCK - Entity appears on US Government Consolidated Screening List (Snowflake Marketplace listing GZTSZ290BV255)"}'';
     ELSE
-        v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":0,"risk_level":"CLEAR","action":"No matches on screening lists. Entity cleared for trade."}'';
+        v_result := ''{"workflow":"SANCTIONS_SCREEN","entity":"'' || :P_ENTITY_NAME || ''","matches_found":0,"risk_level":"CLEAR","data_basis":"'' || :v_basis || ''","action":"No matches on screening lists. Entity cleared for trade."}'';
     END IF;
 
     RETURN :v_result;
