@@ -339,11 +339,325 @@ SHOW GRANTS TO ROLE HACKATHON_JUDGE_ROLE;
 
 
 -- ============================================================================
+-- 9. Make every task event-driven: run only when data actually changed
+-- ============================================================================
+-- Resuming the tasks revealed a second class of waste, separate from the
+-- failures above. TASK_PROCESS_NEW_BL was already gated on
+-- SYSTEM$STREAM_HAS_DATA('NEW_PDF_STREAM'), yet it SUCCEEDED every 5 minutes
+-- while reporting "processed": 0. The reason:
+--
+--     SELECT SYSTEM$STREAM_HAS_DATA('NEW_PDF_STREAM'),
+--            (SELECT COUNT(*) FROM NEW_PDF_STREAM);
+--     -- TRUE, 28
+--
+--     SELECT PROCEDURE_NAME FROM INFORMATION_SCHEMA.PROCEDURES
+--     WHERE PROCEDURE_DEFINITION ILIKE '%NEW_PDF_STREAM%';
+--     -- no rows
+--
+-- Nothing in the codebase ever read the stream. A stream's offset only advances
+-- when a DML statement consumes it, so the condition stayed true permanently and
+-- the task started a warehouse every 5 minutes to do nothing. The same was true
+-- of BL_CHANGE_STREAM. A stream-gated task whose body does not consume its
+-- stream is not event-driven; it is a poll with extra steps.
+--
+-- Three rules follow, and this section applies all of them:
+--
+--   1. Every task consumes its own stream. A stream can only be read once, so
+--      two tasks sharing one stream would race and one would never fire. Hence
+--      one dedicated stream per task, five of them created here.
+--   2. Every task body performs consuming DML even when there is no work. The
+--      consumer is an aggregate SELECT, which returns exactly one row even over
+--      an empty stream, so the offset always advances and the condition always
+--      clears.
+--   3. Every task guards the expensive call behind a real row count. This is not
+--      redundant: SYSTEM$STREAM_HAS_DATA can return TRUE while the stream holds
+--      zero rows, and it did - the first run of the rewritten TASK_FRAUD_SCAN
+--      logged 'changed_rows=0' and correctly skipped a full-table percentile
+--      scan that the WHEN condition alone would have authorised.
+--
+-- Result: a skipped run reports "Conditional expression for task evaluated to
+-- false" and starts no warehouse.
+
+-- 9a. One stream per consumer.
+CREATE OR REPLACE STREAM MENDIX_APP.AGENTS.BL_COMPLIANCE_STREAM
+  ON TABLE MENDIX_APP.AGENTS.BILL_OF_LADING
+  COMMENT = 'Feeds TASK_COMPLIANCE_CHECK.';
+CREATE OR REPLACE STREAM MENDIX_APP.AGENTS.BL_INSIGHTS_STREAM
+  ON TABLE MENDIX_APP.AGENTS.BILL_OF_LADING
+  COMMENT = 'Feeds TASK_GENERATE_WEEKLY_INSIGHTS. A weekly executive report over unchanged data is not worth the Cortex spend.';
+CREATE OR REPLACE STREAM MENDIX_APP.AGENTS.FRAUD_EXPLAIN_STREAM
+  ON TABLE MENDIX_APP.AGENTS.FRAUD_ALERT
+  COMMENT = 'Feeds TASK_AI_EXPLAIN_ANOMALY.';
+CREATE OR REPLACE STREAM MENDIX_APP.AGENTS.FRAUD_NOTIFY_STREAM
+  ON TABLE MENDIX_APP.AGENTS.FRAUD_ALERT
+  COMMENT = 'Feeds TASK_NOTIFY_HIGH_FRAUD. Separate offset from FRAUD_EXPLAIN_STREAM so the two tasks do not race.';
+CREATE OR REPLACE STREAM MENDIX_APP.AGENTS.EXTRACTED_DOCS_STREAM
+  ON TABLE MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED
+  COMMENT = 'Feeds TASK_REFRESH_PDF_URLS. The app calls GET_PDF_URL on demand, so only newly extracted documents need a stored URL refreshed.';
+
+-- 9b. A work list for compliance. This exists because of a specific trap.
+--
+-- CHECK_COMPLIANCE writes to BILL_OF_LADING, which is the table
+-- BL_COMPLIANCE_STREAM watches - so the task re-arms its own condition and would
+-- re-check the row it just checked, forever. Filtering the stream to
+-- METADATA$ACTION = 'INSERT' breaks that cycle.
+--
+-- It also matters WHICH rows the task selects. The original body picked any row
+-- with COMPLIANCE_CHECK_PASSED IS NULL, and all 10,017 rows are unchecked: at one
+-- row per 30 minutes that is a 209-day backfill driven by the task's own writes,
+-- not by new data, on an account that expires in weeks. Draining history is a
+-- bulk operation (Compliance page -> Bulk Scan), not an event-driven task, so the
+-- task now only ever processes B/Ls that genuinely arrived.
+--
+-- The queue is needed because the stream can only be read once: without it, any
+-- arrivals beyond a single run's limit would be consumed and silently lost.
+CREATE TABLE IF NOT EXISTS MENDIX_APP.AGENTS.COMPLIANCE_QUEUE (
+    BL_ID      NUMBER(38,0) NOT NULL,
+    QUEUED_AT  TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP(),
+    CHECKED_AT TIMESTAMP_NTZ(9)
+)
+COMMENT = 'Work list for TASK_COMPLIANCE_CHECK. Deliberately does NOT contain the pre-existing unchecked rows.';
+
+-- 9c. Tasks must be suspended before their body or condition can be altered,
+--     otherwise: "Unable to update graph with root task ... since that root task
+--     is not suspended."
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_COMPLIANCE_CHECK SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_REFRESH_PDF_URLS SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_AI_EXPLAIN_ANOMALY SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_NOTIFY_HIGH_FRAUD SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_GENERATE_WEEKLY_INSIGHTS SUSPEND;
+
+-- 9d. Bodies. Each measures the real row count first (a plain SELECT does not
+--     consume a stream), then consumes, then guards the expensive call.
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL MODIFY AS
+DECLARE
+  v_changed NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.NEW_PDF_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_PROCESS_NEW_BL', 'CONSUME_NEW_PDF_STREAM', 0,
+         'new_files=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.NEW_PDF_STREAM;
+  IF (:v_changed > 0) THEN
+    CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();
+    RETURN 'ingested, new_files=' || :v_changed;
+  END IF;
+  RETURN 'skipped: stream flagged but held no rows';
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN MODIFY AS
+DECLARE
+  v_changed NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BL_CHANGE_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_FRAUD_SCAN', 'CONSUME_BL_CHANGE_STREAM', 0,
+         'changed_rows=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.BL_CHANGE_STREAM;
+  IF (:v_changed > 0) THEN
+    CALL MENDIX_APP.AGENTS.WORKFLOW_DETECT_AND_ACT(100);
+    RETURN 'scanned, changed_rows=' || :v_changed;
+  END IF;
+  RETURN 'skipped: stream flagged but held no rows';
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_COMPLIANCE_CHECK MODIFY AS
+DECLARE
+  v_new  NUMBER DEFAULT 0;
+  v_done NUMBER DEFAULT 0;
+  v_bl   NUMBER;
+BEGIN
+  INSERT INTO MENDIX_APP.AGENTS.COMPLIANCE_QUEUE (BL_ID)
+  SELECT DISTINCT s.BL_ID
+  FROM MENDIX_APP.AGENTS.BL_COMPLIANCE_STREAM s
+  WHERE s.METADATA$ACTION = 'INSERT'
+    AND s.BL_ID IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE q WHERE q.BL_ID = s.BL_ID);
+  v_new := SQLROWCOUNT;
+  FOR i IN 1 TO 5 DO
+    v_bl := (SELECT BL_ID FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE
+             WHERE CHECKED_AT IS NULL ORDER BY QUEUED_AT LIMIT 1);
+    IF (v_bl IS NULL) THEN
+      BREAK;
+    END IF;
+    CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(:v_bl);
+    UPDATE MENDIX_APP.AGENTS.COMPLIANCE_QUEUE
+       SET CHECKED_AT = CURRENT_TIMESTAMP() WHERE BL_ID = :v_bl;
+    v_done := :v_done + 1;
+  END FOR;
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  VALUES ('TASK_COMPLIANCE_CHECK', 'CONSUME_BL_COMPLIANCE_STREAM', 0,
+          'queued=' || :v_new, 'checked=' || :v_done, 0, 'SUCCESS');
+  RETURN 'queued=' || :v_new || ', checked=' || :v_done;
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_AI_EXPLAIN_ANOMALY MODIFY AS
+DECLARE
+  v_changed NUMBER;
+  v_alert_id NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.FRAUD_EXPLAIN_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_AI_EXPLAIN_ANOMALY', 'CONSUME_FRAUD_EXPLAIN_STREAM', 0,
+         'changed_alerts=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.FRAUD_EXPLAIN_STREAM;
+  IF (:v_changed = 0) THEN
+    RETURN 'skipped: stream flagged but held no rows';
+  END IF;
+  v_alert_id := (SELECT ALERT_ID FROM MENDIX_APP.AGENTS.FRAUD_ALERT
+                 WHERE SEVERITY = 'HIGH' AND STATUS = 'OPEN'
+                   AND NOT EXISTS (SELECT 1 FROM MENDIX_APP.AGENTS.AI_ANOMALY_REPORT
+                                   WHERE BL_IDS LIKE '%' || ALERT_ID || '%')
+                 LIMIT 1);
+  IF (:v_alert_id IS NULL) THEN
+    RETURN 'skipped: no unexplained HIGH/OPEN alert';
+  END IF;
+  CALL MENDIX_APP.AGENTS.AI_EXPLAIN_ANOMALY(:v_alert_id, 'EN');
+  RETURN 'explained ALERT_ID=' || :v_alert_id;
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_NOTIFY_HIGH_FRAUD MODIFY AS
+DECLARE
+  v_changed NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.FRAUD_NOTIFY_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_NOTIFY_HIGH_FRAUD', 'CONSUME_FRAUD_NOTIFY_STREAM', 0,
+         'changed_alerts=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.FRAUD_NOTIFY_STREAM;
+  IF (:v_changed > 0) THEN
+    CALL MENDIX_APP.AGENTS.NOTIFY_HIGH_FRAUD_ALERTS();
+    RETURN 'notified, changed_alerts=' || :v_changed;
+  END IF;
+  RETURN 'skipped: stream flagged but held no rows';
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_REFRESH_PDF_URLS MODIFY AS
+DECLARE
+  v_changed NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.EXTRACTED_DOCS_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_REFRESH_PDF_URLS', 'CONSUME_EXTRACTED_DOCS_STREAM', 0,
+         'changed_docs=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.EXTRACTED_DOCS_STREAM;
+  IF (:v_changed > 0) THEN
+    CALL MENDIX_APP.AGENTS.REFRESH_PDF_PRESIGNED_URLS();
+    RETURN 'refreshed, changed_docs=' || :v_changed;
+  END IF;
+  RETURN 'skipped: stream flagged but held no rows';
+END;
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_GENERATE_WEEKLY_INSIGHTS MODIFY AS
+DECLARE
+  v_changed NUMBER;
+BEGIN
+  v_changed := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BL_INSIGHTS_STREAM);
+  INSERT INTO MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+      (WORKFLOW_NAME, STEP_NAME, STEP_ORDER, INPUT_PARAMS, OUTPUT_RESULT, EXECUTION_TIME_MS, STATUS)
+  SELECT 'TASK_GENERATE_WEEKLY_INSIGHTS', 'CONSUME_BL_INSIGHTS_STREAM', 0,
+         'changed_rows=' || COUNT(*), 'stream offset advanced', 0, 'SUCCESS'
+  FROM MENDIX_APP.AGENTS.BL_INSIGHTS_STREAM;
+  IF (:v_changed > 0) THEN
+    CALL MENDIX_APP.AGENTS.AI_GENERATE_INSIGHTS();
+    RETURN 'insights generated, changed_rows=' || :v_changed;
+  END IF;
+  RETURN 'skipped: no shipment activity this period';
+END;
+
+-- 9e. Conditions. One stream per task, matching the bodies above.
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.NEW_PDF_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_CHANGE_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_COMPLIANCE_CHECK
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_COMPLIANCE_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_REFRESH_PDF_URLS
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.EXTRACTED_DOCS_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_AI_EXPLAIN_ANOMALY
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.FRAUD_EXPLAIN_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_NOTIFY_HIGH_FRAUD
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.FRAUD_NOTIFY_STREAM');
+ALTER TASK MENDIX_APP.AGENTS.TASK_GENERATE_WEEKLY_INSIGHTS
+  MODIFY WHEN SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_INSIGHTS_STREAM');
+
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_COMPLIANCE_CHECK RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_REFRESH_PDF_URLS RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_AI_EXPLAIN_ANOMALY RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_NOTIFY_HIGH_FRAUD RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_GENERATE_WEEKLY_INSIGHTS RESUME;
+
+
+-- ============================================================================
+-- 10. Assertions for the event-driven behaviour
+-- ============================================================================
+
+-- 10a. Every task started, every task carries a distinct stream condition.
+--      Expect 7 rows, all state = started, all condition non-empty.
+SHOW TASKS IN SCHEMA MENDIX_APP.AGENTS;
+
+-- 10b. Once the backlog has drained, streams disarm. A FALSE here is what makes
+--      the corresponding task skip for free.
+SELECT 'NEW_PDF' AS STREAM, SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.NEW_PDF_STREAM') AS ARMED
+UNION ALL SELECT 'BL_CHANGE',      SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_CHANGE_STREAM')
+UNION ALL SELECT 'BL_COMPLIANCE',  SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_COMPLIANCE_STREAM')
+UNION ALL SELECT 'BL_INSIGHTS',    SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.BL_INSIGHTS_STREAM')
+UNION ALL SELECT 'FRAUD_EXPLAIN',  SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.FRAUD_EXPLAIN_STREAM')
+UNION ALL SELECT 'FRAUD_NOTIFY',   SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.FRAUD_NOTIFY_STREAM')
+UNION ALL SELECT 'EXTRACTED_DOCS', SYSTEM$STREAM_HAS_DATA('MENDIX_APP.AGENTS.EXTRACTED_DOCS_STREAM')
+ORDER BY 1;
+
+-- 10c. The decisive evidence. With nothing new on the stage, TASK_PROCESS_NEW_BL
+--      must appear as SKIPPED with
+--      "Conditional expression for task evaluated to false."
+--      Before this change the same task logged 10 consecutive SUCCEEDED runs
+--      that each extracted 0 documents.
+SELECT NAME, STATE, SCHEDULED_TIME, LEFT(COALESCE(ERROR_MESSAGE, 'ok'), 80) AS DETAIL
+FROM TABLE(MENDIX_APP.INFORMATION_SCHEMA.TASK_HISTORY(
+    SCHEDULED_TIME_RANGE_START => DATEADD('hour', -1, CURRENT_TIMESTAMP())))
+WHERE NAME LIKE 'TASK_%' AND STATE <> 'SCHEDULED'
+ORDER BY SCHEDULED_TIME DESC;
+
+-- 10d. What each triggered run actually did, and why it did or did not proceed.
+SELECT WORKFLOW_NAME, STEP_NAME, INPUT_PARAMS, OUTPUT_RESULT, EXECUTED_AT
+FROM MENDIX_APP.AGENTS.WORKFLOW_AUDIT_LOG
+WHERE STEP_NAME LIKE 'CONSUME_%'
+ORDER BY EXECUTED_AT DESC LIMIT 20;
+
+-- 10e. The compliance task must not have started backfilling history. Expect
+--      QUEUE_TOTAL to be small (only genuinely new arrivals) while
+--      UNCHECKED_BLS stays in the thousands.
+SELECT (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE) AS QUEUE_TOTAL,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE WHERE CHECKED_AT IS NULL) AS QUEUE_PENDING,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+          WHERE COMPLIANCE_CHECK_PASSED IS NULL) AS UNCHECKED_BLS;
+
+
+-- ============================================================================
 -- Known residual issues, recorded rather than hidden
 -- ============================================================================
--- * BL_CHANGE_STREAM now has no consumer. It is harmless but pointless, and
---   will eventually go stale past its retention window. Either drop it or give
---   it a consumer; it is left in place because other documentation refers to it.
+-- * BL_CHANGE_STREAM now has a consumer again (section 9 gave TASK_FRAUD_SCAN a
+--   body that reads it), so the earlier concern about it going stale is resolved.
+-- * The 10,017 pre-existing rows with COMPLIANCE_CHECK_PASSED IS NULL are left
+--   unchecked ON PURPOSE. They are seed data, and having a 30-minute task grind
+--   through them one at a time - driven by its own writes rather than by new
+--   data - would run for roughly 209 days and spend Cortex credits the whole
+--   way. Use the Compliance page's Bulk Scan, or BATCH_CHECK_COMPLIANCE(24, N),
+--   if that backfill is genuinely wanted.
+-- * SYSTEM$STREAM_HAS_DATA can report TRUE while the stream contains zero rows.
+--   Each task therefore still starts a warehouse for that one cheap run (a COUNT
+--   plus a single-row INSERT) before disarming itself. The guard keeps it cheap;
+--   it does not make it free.
 -- * FRAUD_ALERT contains one alert (id 508) whose BL_ID 14100 does not exist in
 --   BILL_OF_LADING. It is STATUS = 'ESCALATED', so the pipeline's
 --   `WHERE STATUS = 'OPEN'` filter never selects it, and section 4 makes the

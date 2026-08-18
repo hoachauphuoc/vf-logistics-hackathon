@@ -39,7 +39,7 @@ Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowf
 
 Direct app link (after login): `https://app.snowflake.com/dpyxiqz-fn71223/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
 
-This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 32 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
+This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 33 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
 
 > **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture** — it is not deployed and is not required to run the solution. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) now lives in the Streamlit app. The `mendix-integration/` folder is retained purely as reference for the JDBC key-pair auth pattern. See *Known Limitations* in Section 11 for the two UX trade-offs this consolidation introduced.
 
@@ -375,22 +375,33 @@ After being shortlisted, 3 evaluator feedback items were addressed:
 **A related correctness defect was removed at the same time.** `PROCESS_BL_DOCUMENTS` wrapped the deterministic validator in
 `COALESCE(BL_DOC_ALERT(...), 'No anomalies detected')`, storing an English sentence where the absence of a finding should simply be NULL. That single choice cost three things: `SYNC_EXTRACTED_TO_BILL_OF_LADING` had to `NULLIF` the sentence back out, the Documents page had to compare against an English magic string, and `ALERT IS NOT NULL` counted seven clean documents as alerted. The `COALESCE` is gone, the seven stored sentinels were set to NULL, and "no anomalies detected" is now a translated UI string.
 
-### Fix 1b: Scheduled automation enabled
-All 7 tasks were previously left `suspended`, so nothing ran unless a human pressed a button. They are now `started`:
+### Fix 1b: Scheduled automation enabled — and made genuinely event-driven
+All 7 tasks were previously left `suspended`, so nothing ran unless a human pressed a button. They are now `started`, and every one of them is gated on a stream so that **an idle account performs no work at all**:
 
-| Task | Schedule | Trigger | Calls |
+| Task | Interval | Fires only when | Calls |
 |---|---|---|---|
-| `TASK_PROCESS_NEW_BL` | 5 min | `SYSTEM$STREAM_HAS_DATA(NEW_PDF_STREAM)` | `WORKFLOW_INGEST_AND_DECIDE()` |
-| `TASK_FRAUD_SCAN` | 60 min | unconditional | `WORKFLOW_DETECT_AND_ACT(100)` |
-| `TASK_COMPLIANCE_CHECK` | 30 min | unconditional | `CHECK_COMPLIANCE` on one unchecked B/L |
-| `TASK_REFRESH_PDF_URLS` | 50 min | unconditional | `REFRESH_PDF_PRESIGNED_URLS()` |
-| `TASK_AI_EXPLAIN_ANOMALY` | 120 min | unconditional | `AI_EXPLAIN_ANOMALY` on one HIGH/OPEN alert |
-| `TASK_NOTIFY_HIGH_FRAUD` | 240 min | unconditional | `NOTIFY_HIGH_FRAUD_ALERTS()` |
-| `TASK_GENERATE_WEEKLY_INSIGHTS` | Mon 08:00 UTC | unconditional | `AI_GENERATE_INSIGHTS()` |
+| `TASK_PROCESS_NEW_BL` | 5 min | `NEW_PDF_STREAM` has data | `WORKFLOW_INGEST_AND_DECIDE()` |
+| `TASK_FRAUD_SCAN` | 60 min | `BL_CHANGE_STREAM` has data | `WORKFLOW_DETECT_AND_ACT(100)` |
+| `TASK_COMPLIANCE_CHECK` | 30 min | `BL_COMPLIANCE_STREAM` has data | `CHECK_COMPLIANCE` on up to 5 queued new B/Ls |
+| `TASK_REFRESH_PDF_URLS` | 50 min | `EXTRACTED_DOCS_STREAM` has data | `REFRESH_PDF_PRESIGNED_URLS()` |
+| `TASK_AI_EXPLAIN_ANOMALY` | 120 min | `FRAUD_EXPLAIN_STREAM` has data | `AI_EXPLAIN_ANOMALY` on one HIGH/OPEN alert |
+| `TASK_NOTIFY_HIGH_FRAUD` | 240 min | `FRAUD_NOTIFY_STREAM` has data | `NOTIFY_HIGH_FRAUD_ALERTS()` |
+| `TASK_GENERATE_WEEKLY_INSIGHTS` | Mon 08:00 UTC | `BL_INSIGHTS_STREAM` has data | `AI_GENERATE_INSIGHTS()` |
 
-`TASK_FRAUD_SCAN` was **rewritten before being resumed**, because its stored body contradicted this document. It carried an inline `INSERT` with the hardcoded thresholds `TOTAL_CHARGES > 50000`, `GROSS_WEIGHT_KGS > 100000` and `cost/kg > 10` — precisely the magic numbers that §7.1 says were replaced by percentile calibration. It also bypassed the queue-backpressure logic and emitted an `ALERT_TYPE` of `NEW_PARTY_CHECK`, an eighth value absent from the documented enum and, as the `ELSE` branch, destined to become the most common one. Resuming it as written would have quietly refilled the table with uncalibrated alerts. It now calls `WORKFLOW_DETECT_AND_ACT(100)`, which recomputes p99/p95/median thresholds on every run, caps output at 8 alerts per rule, deduplicates by `BL_ID` and throttles when the open queue is full. Its `WHEN SYSTEM$STREAM_HAS_DATA(BL_CHANGE_STREAM)` condition was removed in the same change, because the new body does not consume that stream and the condition would therefore never have cleared — the task would have fired every 5 minutes forever. Its interval was relaxed from 5 to 60 minutes, since a full-table percentile scan every 5 minutes is wasteful and would sit permanently at the alert cap.
+`TASK_FRAUD_SCAN` was **rewritten before being resumed**, because its stored body contradicted this document. It carried an inline `INSERT` with the hardcoded thresholds `TOTAL_CHARGES > 50000`, `GROSS_WEIGHT_KGS > 100000` and `cost/kg > 10` — precisely the magic numbers that §7.1 says were replaced by percentile calibration. It also bypassed the queue-backpressure logic and emitted an `ALERT_TYPE` of `NEW_PARTY_CHECK`, an eighth value absent from the documented enum and, as the `ELSE` branch, destined to become the most common one. Resuming it as written would have quietly refilled the table with uncalibrated alerts. It now calls `WORKFLOW_DETECT_AND_ACT(100)`, which recomputes p99/p95/median thresholds on every run, caps output at 8 alerts per rule, deduplicates by `BL_ID` and throttles when the open queue is full. Its interval was relaxed from 5 to 60 minutes, since a full-table percentile scan every 5 minutes would sit permanently at the alert cap.
 
-Cost profile: `TASK_PROCESS_NEW_BL` is stream-gated, so it consumes nothing until a PDF actually lands. `TASK_AI_EXPLAIN_ANOMALY`, `TASK_COMPLIANCE_CHECK` and `TASK_GENERATE_WEEKLY_INSIGHTS` invoke Cortex and are the only meaningful credit consumers; each processes at most one record per run.
+**A stream-gated task is not event-driven unless its body consumes the stream.** `TASK_PROCESS_NEW_BL` already carried `WHEN SYSTEM$STREAM_HAS_DATA('NEW_PDF_STREAM')`, yet it succeeded every 5 minutes while reporting `"processed": 0`. The stream held 28 rows and **no procedure in the codebase read either stream** — a stream's offset only advances when DML consumes it, so the condition stayed true permanently and the task started a warehouse every 5 minutes to do nothing. `BL_CHANGE_STREAM` had the same problem.
+
+Three rules were applied to fix it:
+1. **One dedicated stream per task.** A stream can only be read once, so two tasks sharing one would race and one would never fire. Five new streams were created for the previously ungated tasks.
+2. **Every body consumes its stream even when there is no work**, using an aggregate `SELECT` — which returns exactly one row even over an empty stream — so the offset always advances and the condition always clears.
+3. **Every body guards the expensive call behind a real row count.** This is not redundant: `SYSTEM$STREAM_HAS_DATA` can return `TRUE` while the stream holds **zero** rows, and it did — the first run of the rewritten `TASK_FRAUD_SCAN` logged `changed_rows=0` and correctly skipped a full-table percentile scan that the `WHEN` condition alone would have authorised.
+
+`TASK_COMPLIANCE_CHECK` needed two further corrections. `CHECK_COMPLIANCE` writes to `BILL_OF_LADING`, the very table its stream watches, so the task re-armed its own condition and would have re-checked the same row forever; the stream is now filtered to `METADATA$ACTION = 'INSERT'`. More seriously, its original body picked *any* row with `COMPLIANCE_CHECK_PASSED IS NULL` — and **all 10,017 rows are unchecked**, so at one row per 30 minutes it was a **209-day backfill driven by its own writes rather than by new data**, on an account that expires 2026-09-04. Draining history is a bulk operation, not an event-driven task, so new arrivals are now copied into a small `COMPLIANCE_QUEUE` as the stream is consumed (without which any arrival beyond a single run's limit would be silently discarded) and the historical backlog is deliberately left to the Compliance page's **Bulk Scan**.
+
+Measured result: with nothing new on the stage, `TASK_PROCESS_NEW_BL` reports **`SKIPPED` — "Conditional expression for task evaluated to false"**, which starts no warehouse. Six of the seven streams disarm once their backlog drains; `BL_INSIGHTS_STREAM` stays armed because there genuinely was shipment activity, and will clear on its next Monday run.
+
+Cost profile: an idle account runs nothing. When data does arrive, `TASK_AI_EXPLAIN_ANOMALY`, `TASK_COMPLIANCE_CHECK` and `TASK_GENERATE_WEEKLY_INSIGHTS` are the only Cortex consumers, and each is bounded — one alert, five B/Ls, and one report per run respectively.
 
 ### Fix 2: Merge External Sandbox Portal with Native Streamlit
 - **Mendix removed as the interface** — all operator functionality consolidated into Streamlit-in-Snowflake
@@ -443,7 +454,8 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 
 | Check | Result |
 |---|---|
-| Tables / views | 32 / 11 — all 11 views queried successfully |
+| Tables / views | 33 / 11 — all 11 views queried successfully (`COMPLIANCE_QUEUE` added for event-driven compliance) |
+| Streams | 7 — one per task, so no two tasks race to consume the same offset |
 | Procedures / functions | 52 / 10 |
 | `BILL_OF_LADING` rows | 10,017 |
 | Cortex Search `BL_SEARCH_SERVICE` | ACTIVE (indexing + serving), 10,017 rows |
@@ -465,7 +477,12 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | `FRAUD_ALERT.ALERT_ID` uniqueness | 0 duplicate ids across 476 rows (was 20 duplicated ids over 40 rows); autoincrement counter advanced to 1349, above the maximum id of 1243 |
 | `WORKFLOW_INGEST_AND_DECIDE()` after the fix | The exact task body that failed twice now returns `{"status":"COMPLETED","alerts_processed":1,...}` |
 | `WORKFLOW_FULL_PIPELINE_V2('AUTO')` after the fix | Completed, 1 alert processed, AI decision `ESCALATE` with a stated reason, 15.4s |
-| Scheduled tasks | All 7 report `state = started`; `TASK_FRAUD_SCAN` verified to call `WORKFLOW_DETECT_AND_ACT(100)` with no `WHEN` condition |
+| Scheduled tasks | All 7 report `state = started`; `TASK_FRAUD_SCAN` verified to call `WORKFLOW_DETECT_AND_ACT(100)` |
+| Tasks are event-driven, not polling | With nothing new on the stage, `TASK_PROCESS_NEW_BL` logs `SKIPPED` — "Conditional expression for task evaluated to false" — and starts no warehouse. Previously the same task logged 10 consecutive `SUCCEEDED` runs that each extracted 0 documents |
+| Stream offsets actually advance | `NEW_PDF_STREAM` went from 28 pending rows / `HAS_DATA = TRUE` to 0 / `FALSE` after one run; 6 of 7 streams disarm once their backlog drains |
+| Zero-row stream guard | `TASK_FRAUD_SCAN` logged `changed_rows=0` on a run where `SYSTEM$STREAM_HAS_DATA` was `TRUE` but the stream was empty, and correctly skipped the percentile scan |
+| No task re-triggers itself forever | `AI_EXPLAIN_ANOMALY` and `NOTIFY_HIGH_FRAUD_ALERTS` verified not to write to `FRAUD_ALERT`; `TASK_COMPLIANCE_CHECK`, which does write to the table its stream watches, is filtered to `METADATA$ACTION = 'INSERT'` |
+| Compliance backfill not started by stealth | `COMPLIANCE_QUEUE` holds only genuinely new arrivals (1 row) while 10,017 historical rows remain unchecked by design |
 | Alert sentinel removed | `ALERT` and `CONFIDENCE_SCORE` now agree with `BL_DOC_ALERT`/`BL_DOC_CONFIDENCE` on every row in all three statuses: 0 mismatches (previously 7 rows stored the English string `'No anomalies detected'` instead of NULL) |
 | Translation key parity | 346 keys defined for EN, VN and JA with identical key sets; only `f_bl_id` is intentionally identical in all three (it is an identifier) |
 | Language conditionals in pages | 0 across `app.py` and all six pages, down from 38 (28 of which had no Japanese branch) |
