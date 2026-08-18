@@ -24,9 +24,6 @@ CAPTIONS = {
     "VN": "Hoi ve lo hang, hang tau, tuan thu, gian lan — du lieu truc tiep tu Snowflake",
     "JA": "出荷・船社・コンプライアンス・不正について質問 — Snowflakeのライブデータに基づく",
 }
-THINKING = {"EN": "Analyzing your question...", "VN": "Dang phan tich cau hoi...", "JA": "質問を分析しています..."}
-LBL_YOU = {"EN": "You", "VN": "Ban", "JA": "あなた"}
-LBL_AI = {"EN": "AI Assistant", "VN": "Tro ly AI", "JA": "AIアシスタント"}
 
 # --- Styling: professional chat bubbles ---
 # The shared theme is applied first, then the chat-specific rules below extend it.
@@ -385,7 +382,7 @@ def ask(question):
     )
     db_save("user", content=question)
     t0 = time.time()
-    with st.spinner(THINKING[lang]):
+    with st.spinner(t["chat_analyzing"]):
         answer, sql, pdf, rows = generate_response(question)
     latency = int((time.time() - t0) * 1000)
     st.session_state.chat_messages.append({
@@ -409,16 +406,16 @@ with st.sidebar:
            if m["role"] == "assistant" and m.get("latency_ms")]
     avg_lat = int(sum(lat) / len(lat)) if lat else 0
 
-    st.markdown("**Session**" if lang == "EN" else "**Phien**")
+    st.markdown(t["sb_session"])
     m1, m2 = st.columns(2)
-    m1.metric("Turns", turns)
-    m2.metric("Avg", f"{avg_lat/1000:.1f}s" if avg_lat else "—")
-    st.caption(f"Model: `{ai_model}`")
+    m1.metric(t["m_turns"], turns)
+    m2.metric(t["m_avg"], f"{avg_lat/1000:.1f}s" if avg_lat else ui.EM_DASH)
+    st.caption(t["model_label"].format(model=f"`{ai_model}`"))
     st.markdown("---")
 
     # --- Conversations (persisted in Snowflake) ---
-    st.markdown("**Conversations**" if lang == "EN" else "**Hoi thoai**")
-    if st.button("➕ New chat" if lang == "EN" else "➕ Hoi thoai moi",
+    st.markdown(t["sb_conversations"])
+    if st.button(t["sb_new_chat"],
                  key="new_chat", use_container_width=True):
         st.session_state.chat_messages = []
         st.session_state.session_id = None   # created lazily on first message
@@ -428,11 +425,11 @@ with st.sidebar:
 
     past = db_list_sessions()
     if past:
-        label = f"History ({len(past)})" if lang == "EN" else f"Lich su ({len(past)})"
+        label = t["sb_history"].format(n=len(past))
         with st.expander(label, expanded=False):
             for s in past:
                 sid = int(s["SESSION_ID"])
-                title = str(s.get("TITLE") or "Untitled")[:36]
+                title = str(s.get("TITLE") or t["untitled"])[:36]
                 mark = " ●" if sid == st.session_state.get("session_id") else ""
                 if st.button(f"{title}{mark}", key=f"sess_{sid}", use_container_width=True):
                     loaded = db_load_session(sid)
@@ -443,42 +440,40 @@ with st.sidebar:
                         safe_rerun()
                 started = s.get("SESSION_START")
                 when = started.strftime("%d %b %H:%M") if started else ""
-                st.caption(f"{int(s.get('MESSAGE_COUNT') or 0)} msgs · {when}")
+                st.caption(t["sb_msgs"].format(n=int(s.get('MESSAGE_COUNT') or 0), when=when))
 
     if st.session_state.get("persist_error"):
-        st.caption("⚠️ History unavailable — chat still works in this session.")
-        with st.expander("Why?"):
+        st.caption(t["sb_history_unavailable"])
+        with st.expander(t["sb_why"]):
             st.code(str(st.session_state.persist_error), language="text")
 
     st.markdown("---")
 
-    st.markdown("**Quick Questions**" if lang == "EN" else "**Cau hoi nhanh**")
-    quick_qs = {
-        "EN": ["How many shipments are pending?", "Top 5 carriers by revenue",
-               "Show high severity alerts", "Recent SAP postings",
-               "AI decisions by outcome"],
-        "VN": ["Bao nhieu lo hang dang cho?", "Top 5 hang tau theo doanh thu",
-               "Hien canh bao muc cao", "Cac but toan SAP gan day",
-               "Quyet dinh AI theo ket qua"],
-        "JA": ["承認待ちの出荷数は？", "収益トップ5船社", "重大アラートを表示",
-               "最近のSAP転記", "AI判定の内訳"],
-    }
-    for i, q in enumerate(quick_qs.get(lang, quick_qs["EN"])):
+    st.markdown(f"**{t['quick_questions']}**")
+    # The five prompts are looked up per language. They were previously written
+    # inline, and the Vietnamese variants had no diacritics at all ("Bao nhieu
+    # lo hang dang cho?"), which reads as broken Vietnamese rather than a
+    # translation.
+    quick_qs = [
+        t["q_pending"], t["q_top_carriers"], t["q_high_severity"],
+        t["q_recent_sap"], t["q_ai_decisions"],
+    ]
+    for i, q in enumerate(quick_qs):
         if st.button(q, key=f"qq_{i}", use_container_width=True):
             ask(q)
             safe_rerun()
 
     st.markdown("---")
-    st.markdown("**Pipeline**")
-    if st.button("⚡ Run Full Pipeline", key="sidebar_pipeline", use_container_width=True):
+    st.markdown(t["sb_pipeline"])
+    if st.button(t["run_full_pipeline"], key="sidebar_pipeline", use_container_width=True):
         ensure_session()
         t0 = time.time()
         with st.spinner("Detect → Investigate → Screen → Remediate → SAP post..."):
             try:
                 result = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
-                content = f"**Pipeline completed.**\n```json\n{result}\n```"
+                content = t["pipeline_done"] + f"\n```json\n{result}\n```"
             except Exception as e:
-                content = f"**Pipeline error:** {str(e)[:200]}"
+                content = t["pipeline_failed"].format(err=str(e)[:200])
         latency = int((time.time() - t0) * 1000)
         st.session_state.chat_messages.append({
             "role": "assistant", "content": content, "sql": None, "df": None,
@@ -497,14 +492,14 @@ with st.sidebar:
             for m in st.session_state.chat_messages
         )
         st.download_button(
-            "⬇️ Export transcript",
+            t["export_transcript"],
             data=transcript,
             file_name=f"vf_chat_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt",
             mime="text/plain",
             use_container_width=True,
         )
 
-    if st.button("🗑️ Delete this conversation" if lang == "EN" else "🗑️ Xoa hoi thoai nay",
+    if st.button(t["sb_delete_conversation"],
                  key="delete_chat", use_container_width=True):
         sid = st.session_state.get("session_id")
         if sid:
@@ -518,28 +513,21 @@ with st.sidebar:
 
 # --- Chat transcript ---
 if not st.session_state.chat_messages:
-    st.info(
-        "Ask anything about your logistics data — try a quick question in the sidebar, "
-        "or type below. Answers are generated from live Snowflake data, and the SQL used "
-        "is shown for every result."
-        if lang == "EN" else
-        "Hoi bat cu dieu gi ve du lieu logistics — thu cau hoi nhanh o sidebar hoac nhap ben duoi. "
-        "Cau tra loi lay tu du lieu Snowflake truc tiep, kem SQL da dung."
-    )
+    st.info(t["chat_welcome"])
 
 for msg in st.session_state.chat_messages:
     is_user = msg["role"] == "user"
     badge = "U" if is_user else "AI"
     badge_cls = "badge-user" if is_user else "badge-ai"
     row_cls = "chat-row-user" if is_user else "chat-row-ai"
-    name = LBL_YOU[lang] if is_user else LBL_AI[lang]
+    name = t["chat_you"] if is_user else t["chat_ai"]
 
     pills = ""
     if not is_user:
         if msg.get("latency_ms"):
             pills += f"<span class='chat-pill'>{msg['latency_ms']/1000:.1f}s</span>"
         if msg.get("rows") is not None:
-            pills += f"<span class='chat-pill'>{msg['rows']} rows</span>"
+            pills += f"<span class='chat-pill'>{t['chat_rows'].format(n=msg['rows'])}</span>"
 
     st.markdown(
         f"<div class='chat-row {row_cls}'>"
@@ -557,7 +545,7 @@ for msg in st.session_state.chat_messages:
     if msg.get("df") is not None:
         ui.show_table(msg["df"])
     if msg.get("sql"):
-        with st.expander("🔎 View generated SQL" if lang == "EN" else "🔎 Xem SQL"):
+        with st.expander(t["view_generated_sql"]):
             st.code(msg["sql"], language="sql")
 
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -568,14 +556,13 @@ st.markdown("---")
 col1, col2 = st.columns([6, 1])
 with col1:
     user_input = st.text_input(
-        "Ask a question" if lang == "EN" else "Dat cau hoi",
-        placeholder="e.g. Which carrier has the highest total charges?" if lang == "EN"
-        else "VD: Hang tau nao co tong phi cao nhat?",
+        t["ask_question"],
+        placeholder=t["ask_question_placeholder"],
         key=f"chat_input_{st.session_state.input_key}",
         label_visibility="collapsed",
     )
 with col2:
-    send_clicked = st.button("Send 📨" if lang == "EN" else "Gui 📨", use_container_width=True)
+    send_clicked = st.button(t["send"], use_container_width=True)
 
 if send_clicked and user_input:
     ask(user_input)

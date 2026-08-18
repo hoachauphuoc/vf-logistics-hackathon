@@ -32,13 +32,7 @@ with col4:
 
 st.divider()
 st.subheader(t["all_config"])
-ui.caption_scope(
-    "Every key in APP_CONFIG. The four cards above are the values the app reads "
-    "most often; this is the full table so nothing is hidden."
-    if st.session_state.lang == "EN" else
-    "Toàn bộ khóa trong APP_CONFIG. Bốn thẻ trên là các giá trị ứng dụng dùng nhiều nhất; "
-    "bảng dưới liệt kê đầy đủ để không ẩn gì."
-)
+ui.caption_scope(t["all_config_scope"])
 try:
     config_df = session.sql("SELECT CONFIG_KEY, CONFIG_VALUE FROM APP_CONFIG ORDER BY CONFIG_KEY").to_pandas()
     # Height is set explicitly so the whole table is visible instead of being

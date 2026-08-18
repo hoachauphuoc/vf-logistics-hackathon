@@ -719,6 +719,582 @@ TRANSLATIONS = {
     }
 }
 
+
+# ---------------------------------------------------------------------------
+# Strings that used to be hardcoded inside the pages.
+#
+# TRANSLATIONS above was already complete (identical key sets for EN/VN/JA), but
+# the pages largely bypassed it: 28 inline `if lang == "EN" else ...` chains had
+# only an English and a Vietnamese branch, so selecting 日本語 silently fell
+# through to Vietnamese. Dozens of other labels were plain English literals with
+# no branch at all. Both classes are consolidated here so a page never decides
+# what language it is in — it only looks up a key.
+#
+# Kept as a separate block, merged below, so the diff against the original
+# TRANSLATIONS stays readable and a parity test can assert the three languages
+# still define exactly the same keys.
+# ---------------------------------------------------------------------------
+_PAGE_STRINGS = {
+    "EN": {
+        # --- app.py: header --------------------------------------------------
+        # These three languages were already complete in app.py's local dicts;
+        # they are moved here verbatim so the wording does not change, only its
+        # location. Distinct from app_title/app_subtitle, which the sub-pages use.
+        "home_title": "🚢 VF Logistics Command Center",
+        "home_subtitle": (
+            "Real-time maritime logistics intelligence • Snowflake Cortex AI • "
+            "CoCo CLI Hackathon 2026"
+        ),
+        # --- app.py: KPI row -------------------------------------------------
+        "loading_kpis": "Loading KPIs...",
+        "home_kpi_error": "Could not load KPIs: {err}",
+        "m_shipments": "📦 Shipments",
+        "m_revenue": "💰 Revenue",
+        "m_pending": "⏳ Pending",
+        "m_carriers": "🚢 Carriers",
+        "m_approved": "✅ Approved",
+        "m_in_transit": "🚀 In Transit",
+        "m_avg_charge": "📊 Avg Charge",
+        "m_weight": "⚖️ Weight",
+        # --- app.py: charts --------------------------------------------------
+        "chart_revenue_by_carrier": "💰 Revenue by Carrier",
+        "chart_status_dist": "📊 Shipment Status Distribution",
+        "chart_weekly": "📈 Weekly Shipment Volume & Revenue",
+        "chart_top_routes": "🌍 Top Routes (Origin → Destination)",
+        "ax_carrier": "Carrier",
+        "ax_revenue_usd": "Revenue (USD)",
+        "ax_shipments": "Shipments",
+        "ax_revenue": "Revenue",
+        "ax_route": "Route",
+        "ax_week": "Week",
+        # --- app.py: live data strip -----------------------------------------
+        "live_data_pipeline": "🌐 Live Data & Pipeline",
+        "fx_unavailable": "FX unavailable",
+        "sanctions_db": "🛡️ Sanctions DB",
+        "entities": "Entities",
+        "sanctions_source": "US ITA Export Screening",
+        "not_available": "N/A",
+        "ai_usage_24h": "🤖 AI Usage (24h)",
+        "ai_calls": "AI Calls",
+        "pipeline_demo_desc": (
+            "Run the real autonomous pipeline "
+            "(detect → AI investigate → sanctions screen → SAP post) "
+            "from the Fraud Detection page."
+        ),
+        # --- 1_Documents.py --------------------------------------------------
+        "doc_pipeline_subtitle": (
+            "Cortex AI extraction → deterministic validation → review → SAP posting"
+        ),
+        "doc_processing": "📤 Document Processing",
+        "upload_instructions": (
+            "**To upload new PDFs:** Snowsight left menu → **Ingestion** → "
+            "**Load files into a Stage** → select "
+            "`MENDIX_APP.AGENTS.LOGISTICS_STAGE` → path `bill_of_lading/` → "
+            "drag & drop PDFs. Then click **Process** below."
+        ),
+        "process_new_pdfs": "🔄 Process New PDFs on Stage",
+        "extract_spinner": "AI extracting fields from PDFs...",
+        "generic_error": "Error: {err}",
+        "m_pdfs_on_stage": "PDFs on Stage",
+        "m_time_ms": "Time (ms)",
+        "m_extracted_docs": "Extracted Documents",
+        "extracted_docs_header": "📋 Extracted Documents",
+        "bl_search_header": "🔍 Bill of Lading Explorer",
+        "no_extracted_docs": "No extracted documents yet.",
+        "review_doc_header": "✏️ Review Document",
+        "select_doc_review": "Select document to review",
+        "f_file": "File",
+        "f_shipper": "Shipper",
+        "f_consignee": "Consignee",
+        "f_route": "Route",
+        "f_freight": "Freight",
+        "view_pdf": "📎 View PDF",
+        "download_pdf": "⬇️ Download PDF — {name}",
+        "pdf_download_note": "PDF opens after download (SiS security limitation)",
+        "f_status": "Status",
+        "pdf_issue": "PDF issue: {err}",
+        "pdf_link_error": "Could not generate link: {err}",
+        "alert_label": "**Alert:** {v}",
+        "no_anomalies": "No anomalies detected",
+        "edit_review": "**✏️ Edit & Review**",
+        "f_container": "Container number",
+        "f_vessel": "Vessel name",
+        "f_date_issue": "Date of issue",
+        "f_gross_weight": "Gross weight (kg)",
+        "ai_confidence": "AI Confidence",
+        "status_derived_help": (
+            "Derived from validation state: a document with anomalies stays in "
+            "Pending_Review, and Synced_To_SAP requires a real SAP_FI_DOCUMENT."
+        ),
+        "btn_approve": "✅ Approve",
+        "btn_reject": "❌ Reject",
+        "btn_sync_sap": "🔄 Sync to SAP",
+        "approved_msg": "Approved! {v}",
+        "rejected_msg": "Rejected. {v}",
+        "synced_sap_msg": "Synced to SAP! {v}",
+        "approved_no_bl": "Approved (no BL_ID linked yet for SAP)",
+        "validation_unavailable": "Validation check unavailable: {err}",
+        "cannot_sync": (
+            "Cannot sync to SAP — unresolved anomalies: {v}. "
+            "Correct the fields and approve first."
+        ),
+        "doc_load_error": "Could not load document: {err}",
+        "no_docs_to_review": "No extracted documents to review.",
+        # --- 3_Fraud_Detection.py -------------------------------------------
+        "fraud_pipeline_subtitle": (
+            "Calibrated detection → Cortex AI investigation → "
+            "sanctions screening → autonomous action"
+        ),
+        "scope_all_alerts": "Across every alert ever raised in FRAUD_ALERT.",
+        "scope_recent_decisions": (
+            "Across the {n} most recently AI-analysed alerts, not all time. "
+            "Run EVALUATE_AI_DECISIONS() for the full-population breakdown."
+        ),
+        "sap_posting_label": "SAP posting: {v}",
+        # --- 4_AI_FinOps.py --------------------------------------------------
+        "finops_cost_note": (
+            "Token counts are the actual usage figures returned by Cortex with "
+            "each call. Cost is an **estimate**: real tokens x the per-model "
+            "reference credit rate in AI_MODEL_RATE x USD per credit. "
+            "Authoritative billed consumption is "
+            "SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
+        ),
+        "finops_unavailable": "FinOps data unavailable: {err}",
+        "export_ai_log": "📥 Export AI Log CSV",
+        "top_consumer_detail": "**{name}** ({calls} calls, {tokens} tokens)",
+        "insights_spinner": "AI is analysing records for patterns...",
+        "insights_header": "🧠 AI Proactive Insights",
+        "insights_caption": (
+            "AI analyzes 10K+ records and generates executive-level insights: "
+            "risks, opportunities, trends, anomalies."
+        ),
+        "generate_insights": "🧠 Generate AI Insights",
+        "insights_data_label": "📊 Data: {v}",
+        "insights_failed": "Insights generation failed: {err}",
+        "unknown_error": "Unknown error",
+        "finops_footer": "Active Model: {model} | Cost Alert: ${cost}/day | ⚙️ Settings",
+        # --- 5_Settings.py ---------------------------------------------------
+        "all_config_scope": (
+            "Every key in APP_CONFIG. The four cards above are the values the "
+            "app reads most often; this is the full table so nothing is hidden."
+        ),
+        # --- 6_AI_Chat.py ----------------------------------------------------
+        "sb_session": "**Session**",
+        "sb_conversations": "**Conversations**",
+        "sb_new_chat": "➕ New chat",
+        "sb_history": "History ({n})",
+        "sb_msgs": "{n} msgs · {when}",
+        "sb_history_unavailable": (
+            "⚠️ History unavailable — chat still works in this session."
+        ),
+        "sb_why": "Why?",
+        "sb_pipeline": "**Pipeline**",
+        "sb_delete_conversation": "🗑️ Delete this conversation",
+        "view_generated_sql": "🔎 View generated SQL",
+        "chat_you": "You",
+        "chat_ai": "AI Assistant",
+        "chat_analyzing": "Analyzing your question...",
+        "pipeline_done": "**Pipeline completed.**",
+        "pipeline_failed": "**Pipeline error:** {err}",
+        "m_turns": "Turns",
+        "m_avg": "Avg",
+        "export_transcript": "⬇️ Export transcript",
+        "chat_rows": "{n} rows",
+        "untitled": "Untitled",
+        "chat_welcome": (
+            "Ask anything about your logistics data — try a quick question in "
+            "the sidebar, or type below. Answers are generated from live "
+            "Snowflake data, and the SQL used is shown for every result."
+        ),
+        "q_recent_sap": "Recent SAP postings",
+        "q_ai_decisions": "AI decisions by outcome",
+        # --- 2_Compliance.py -------------------------------------------------
+        "f_bl_id": "B/L ID",
+        "compliance_passed": "✅ B/L #{id}: Compliance PASSED",
+        "compliance_warning": "⚠️ B/L #{id}: Compliance WARNING",
+        "compliance_failed": "🚨 B/L #{id}: Compliance FAILED",
+        "issues_found": "**Issues found:**",
+        "full_details": "📋 Full Details",
+        "compliance_error": "⚠️ Compliance check failed: {err}",
+        "bulk_scan_error": "⚠️ Bulk scan failed: {err}",
+        "screen_placeholder": "e.g. Nordic Maritime",
+        "sanctions_match": "🚨 **{n} match(es) found** against the sanctions list.",
+        "sanctions_clear": "✅ **'{name}'** — no sanctions match (screened {n} entities)",
+        "full_screening_details": "📋 Full Screening Details",
+        "screening_error": "⚠️ Screening failed: {err}",
+        "m_rate": "📈 Rate",
+        "rate_stale": (
+            "⚠️ Rate is {n} days old. The marketplace provider has not updated "
+            "this currency pair recently."
+        ),
+        "conversion_error": "⚠️ Conversion failed: {err}",
+    },
+    "VN": {
+        "home_title": "🚢 Trung tâm Điều hành VF Logistics",
+        "home_subtitle": (
+            "Thông tin logistics hàng hải thời gian thực • Snowflake Cortex AI • "
+            "CoCo CLI Hackathon 2026"
+        ),
+        "loading_kpis": "Đang tải KPI...",
+        "home_kpi_error": "Không tải được KPI: {err}",
+        "m_shipments": "📦 Lô hàng",
+        "m_revenue": "💰 Doanh thu",
+        "m_pending": "⏳ Chờ duyệt",
+        "m_carriers": "🚢 Hãng tàu",
+        "m_approved": "✅ Đã duyệt",
+        "m_in_transit": "🚀 Đang vận chuyển",
+        "m_avg_charge": "📊 Phí trung bình",
+        "m_weight": "⚖️ Khối lượng",
+        "chart_revenue_by_carrier": "💰 Doanh thu theo Hãng tàu",
+        "chart_status_dist": "📊 Phân bố Trạng thái Lô hàng",
+        "chart_weekly": "📈 Khối lượng & Doanh thu theo Tuần",
+        "chart_top_routes": "🌍 Tuyến hàng đầu (Điểm đi → Điểm đến)",
+        "ax_carrier": "Hãng tàu",
+        "ax_revenue_usd": "Doanh thu (USD)",
+        "ax_shipments": "Số lô hàng",
+        "ax_revenue": "Doanh thu",
+        "ax_route": "Tuyến",
+        "ax_week": "Tuần",
+        "live_data_pipeline": "🌐 Dữ liệu Trực tiếp & Pipeline",
+        "fx_unavailable": "Không có tỷ giá",
+        "sanctions_db": "🛡️ CSDL Cấm vận",
+        "entities": "Thực thể",
+        "sanctions_source": "Sàng lọc Xuất khẩu US ITA",
+        "not_available": "Không có",
+        "ai_usage_24h": "🤖 Sử dụng AI (24 giờ)",
+        "ai_calls": "Lượt gọi AI",
+        "pipeline_demo_desc": (
+            "Chạy pipeline tự động thật "
+            "(phát hiện → AI điều tra → sàng lọc cấm vận → gửi SAP) "
+            "tại trang Phát hiện Gian lận."
+        ),
+        "doc_pipeline_subtitle": (
+            "Trích xuất Cortex AI → kiểm tra tất định → duyệt → gửi SAP"
+        ),
+        "doc_processing": "📤 Xử lý Chứng từ",
+        "upload_instructions": (
+            "**Để tải PDF mới:** Menu trái Snowsight → **Ingestion** → "
+            "**Load files into a Stage** → chọn "
+            "`MENDIX_APP.AGENTS.LOGISTICS_STAGE` → đường dẫn `bill_of_lading/` "
+            "→ kéo thả PDF. Sau đó bấm **Xử lý** bên dưới."
+        ),
+        "process_new_pdfs": "🔄 Xử lý PDF mới trên Stage",
+        "extract_spinner": "AI đang trích xuất dữ liệu từ PDF...",
+        "generic_error": "Lỗi: {err}",
+        "m_pdfs_on_stage": "PDF trên Stage",
+        "m_time_ms": "Thời gian (ms)",
+        "m_extracted_docs": "Chứng từ đã trích xuất",
+        "extracted_docs_header": "📋 Chứng từ Đã Trích Xuất",
+        "bl_search_header": "🔍 Tra cứu Vận đơn",
+        "no_extracted_docs": "Chưa có chứng từ nào được trích xuất.",
+        "review_doc_header": "✏️ Duyệt Chứng từ",
+        "select_doc_review": "Chọn chứng từ để duyệt",
+        "f_file": "Tệp",
+        "f_shipper": "Người gửi",
+        "f_consignee": "Người nhận",
+        "f_route": "Tuyến",
+        "f_freight": "Phí vận chuyển",
+        "view_pdf": "📎 Xem PDF",
+        "download_pdf": "⬇️ Tải PDF — {name}",
+        "pdf_download_note": "PDF mở sau khi tải về (giới hạn bảo mật của SiS)",
+        "f_status": "Trạng thái",
+        "pdf_issue": "Lỗi PDF: {err}",
+        "pdf_link_error": "Không tạo được liên kết: {err}",
+        "alert_label": "**Cảnh báo:** {v}",
+        "no_anomalies": "Không phát hiện bất thường",
+        "edit_review": "**✏️ Chỉnh sửa & Duyệt**",
+        "f_container": "Số container",
+        "f_vessel": "Tên tàu",
+        "f_date_issue": "Ngày phát hành",
+        "f_gross_weight": "Khối lượng tổng (kg)",
+        "ai_confidence": "Độ tin cậy AI",
+        "status_derived_help": (
+            "Suy ra từ kết quả kiểm tra: chứng từ có bất thường luôn ở "
+            "Pending_Review, và Synced_To_SAP bắt buộc phải có "
+            "SAP_FI_DOCUMENT thật."
+        ),
+        "btn_approve": "✅ Duyệt",
+        "btn_reject": "❌ Từ chối",
+        "btn_sync_sap": "🔄 Đồng bộ SAP",
+        "approved_msg": "Đã duyệt! {v}",
+        "rejected_msg": "Đã từ chối. {v}",
+        "synced_sap_msg": "Đã đồng bộ SAP! {v}",
+        "approved_no_bl": "Đã duyệt (chưa liên kết BL_ID nên chưa gửi SAP)",
+        "validation_unavailable": "Không kiểm tra được dữ liệu: {err}",
+        "cannot_sync": (
+            "Không thể đồng bộ SAP — còn bất thường chưa xử lý: {v}. "
+            "Hãy sửa dữ liệu và duyệt trước."
+        ),
+        "doc_load_error": "Không tải được chứng từ: {err}",
+        "no_docs_to_review": "Không có chứng từ nào để duyệt.",
+        "fraud_pipeline_subtitle": (
+            "Phát hiện theo phân vị → Cortex AI điều tra → "
+            "sàng lọc cấm vận → hành động tự động"
+        ),
+        "scope_all_alerts": "Tính trên toàn bộ cảnh báo trong FRAUD_ALERT.",
+        "scope_recent_decisions": (
+            "Tính trên {n} cảnh báo được AI phân tích gần nhất, không phải "
+            "toàn bộ. Gọi EVALUATE_AI_DECISIONS() để xem toàn bộ."
+        ),
+        "sap_posting_label": "Chứng từ SAP: {v}",
+        "finops_cost_note": (
+            "Số token là số thật do Cortex trả về theo từng lệnh gọi. Chi phí "
+            "là **ước lượng**: token thật x đơn giá credit theo model trong "
+            "AI_MODEL_RATE x USD/credit. Số liệu tính phí chính thức nằm ở "
+            "SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
+        ),
+        "finops_unavailable": "Không có dữ liệu FinOps: {err}",
+        "export_ai_log": "📥 Xuất Log AI (CSV)",
+        "top_consumer_detail": "**{name}** ({calls} lượt gọi, {tokens} token)",
+        "insights_spinner": "AI đang phân tích dữ liệu để tìm quy luật...",
+        "insights_header": "🧠 Insight Chủ động từ AI",
+        "insights_caption": (
+            "AI phân tích hơn 10.000 bản ghi và tạo insight cấp điều hành: "
+            "rủi ro, cơ hội, xu hướng, bất thường."
+        ),
+        "generate_insights": "🧠 Tạo Insight AI",
+        "insights_data_label": "📊 Dữ liệu: {v}",
+        "insights_failed": "Không tạo được insight: {err}",
+        "unknown_error": "Lỗi không xác định",
+        "finops_footer": "Model đang dùng: {model} | Ngưỡng chi phí: ${cost}/ngày | ⚙️ Cài đặt",
+        "all_config_scope": (
+            "Toàn bộ khóa trong APP_CONFIG. Bốn thẻ trên là các giá trị ứng "
+            "dụng dùng nhiều nhất; bảng dưới liệt kê đầy đủ để không ẩn gì."
+        ),
+        "sb_session": "**Phiên**",
+        "sb_conversations": "**Hội thoại**",
+        "sb_new_chat": "➕ Hội thoại mới",
+        "sb_history": "Lịch sử ({n})",
+        "sb_msgs": "{n} tin nhắn · {when}",
+        "sb_history_unavailable": (
+            "⚠️ Không tải được lịch sử — hội thoại vẫn hoạt động trong phiên này."
+        ),
+        "sb_why": "Vì sao?",
+        "sb_pipeline": "**Pipeline**",
+        "sb_delete_conversation": "🗑️ Xóa hội thoại này",
+        "view_generated_sql": "🔎 Xem SQL đã sinh",
+        "chat_you": "Bạn",
+        "chat_ai": "Trợ lý AI",
+        "chat_analyzing": "Đang phân tích câu hỏi của bạn...",
+        "pipeline_done": "**Đã hoàn tất pipeline.**",
+        "pipeline_failed": "**Lỗi pipeline:** {err}",
+        "m_turns": "Lượt",
+        "m_avg": "Trung bình",
+        "export_transcript": "⬇️ Xuất nội dung hội thoại",
+        "chat_rows": "{n} dòng",
+        "untitled": "Chưa có tiêu đề",
+        "chat_welcome": (
+            "Hỏi bất cứ điều gì về dữ liệu logistics của bạn — thử một câu hỏi nhanh ở "
+            "thanh bên, hoặc nhập bên dưới. Câu trả lời được tạo từ dữ liệu Snowflake "
+            "trực tiếp, và SQL đã dùng luôn được hiển thị kèm mọi kết quả."
+        ),
+        "q_recent_sap": "Các bút toán SAP gần đây",
+        "q_ai_decisions": "Quyết định AI theo kết quả",
+        "f_bl_id": "B/L ID",
+        "compliance_passed": "✅ B/L #{id}: Đạt kiểm tra tuân thủ",
+        "compliance_warning": "⚠️ B/L #{id}: Cảnh báo tuân thủ",
+        "compliance_failed": "🚨 B/L #{id}: Không đạt tuân thủ",
+        "issues_found": "**Các vấn đề phát hiện:**",
+        "full_details": "📋 Chi tiết đầy đủ",
+        "compliance_error": "⚠️ Kiểm tra tuân thủ thất bại: {err}",
+        "bulk_scan_error": "⚠️ Quét hàng loạt thất bại: {err}",
+        "screen_placeholder": "VD: Nordic Maritime",
+        "sanctions_match": "🚨 **Phát hiện {n} trường hợp khớp** danh sách cấm vận.",
+        "sanctions_clear": "✅ **'{name}'** — không khớp cấm vận (đã sàng lọc {n} thực thể)",
+        "full_screening_details": "📋 Chi tiết sàng lọc đầy đủ",
+        "screening_error": "⚠️ Sàng lọc thất bại: {err}",
+        "m_rate": "📈 Tỷ giá",
+        "rate_stale": (
+            "⚠️ Tỷ giá đã cũ {n} ngày. Nhà cung cấp trên Marketplace chưa cập "
+            "nhật cạp tiền tệ này gần đây."
+        ),
+        "conversion_error": "⚠️ Quy đổi thất bại: {err}",
+    },
+    "JA": {
+        "home_title": "🚢 VF Logistics コマンドセンター",
+        "home_subtitle": (
+            "リアルタイム海運ロジスティクス • Snowflake Cortex AI • "
+            "CoCo CLI Hackathon 2026"
+        ),
+        "loading_kpis": "KPIを読み込み中...",
+        "home_kpi_error": "KPIを読み込めませんでした: {err}",
+        "m_shipments": "📦 出荷件数",
+        "m_revenue": "💰 売上",
+        "m_pending": "⏳ 承認待ち",
+        "m_carriers": "🚢 船社数",
+        "m_approved": "✅ 承認済み",
+        "m_in_transit": "🚀 輸送中",
+        "m_avg_charge": "📊 平均運賃",
+        "m_weight": "⚖️ 総重量",
+        "chart_revenue_by_carrier": "💰 船社別売上",
+        "chart_status_dist": "📊 出荷ステータス分布",
+        "chart_weekly": "📈 週次出荷量と売上",
+        "chart_top_routes": "🌍 主要航路（積港 → 揚港）",
+        "ax_carrier": "船社",
+        "ax_revenue_usd": "売上 (USD)",
+        "ax_shipments": "出荷件数",
+        "ax_revenue": "売上",
+        "ax_route": "航路",
+        "ax_week": "週",
+        "live_data_pipeline": "🌐 リアルタイムデータとパイプライン",
+        "fx_unavailable": "為替レートを取得できません",
+        "sanctions_db": "🛡️ 制裁データベース",
+        "entities": "エンティティ数",
+        "sanctions_source": "米国ITA輸出スクリーニング",
+        "not_available": "該当なし",
+        "ai_usage_24h": "🤖 AI利用状況（24時間）",
+        "ai_calls": "AI呼び出し数",
+        "pipeline_demo_desc": (
+            "不正検知ページから実際の自律パイプライン"
+            "（検知 → AI調査 → 制裁スクリーニング → SAP転記）を実行できます。"
+        ),
+        "doc_pipeline_subtitle": (
+            "Cortex AI抽出 → 決定的検証 → レビュー → SAP転記"
+        ),
+        "doc_processing": "📤 書類処理",
+        "upload_instructions": (
+            "**新しいPDFのアップロード手順:** Snowsight左メニュー → "
+            "**Ingestion** → **Load files into a Stage** → "
+            "`MENDIX_APP.AGENTS.LOGISTICS_STAGE` を選択 → パス "
+            "`bill_of_lading/` → PDFをドラッグ＆ドロップ。"
+            "その後、下の**処理**ボタンを押してください。"
+        ),
+        "process_new_pdfs": "🔄 ステージ上の新規PDFを処理",
+        "extract_spinner": "AIがPDFから項目を抽出しています...",
+        "generic_error": "エラー: {err}",
+        "m_pdfs_on_stage": "ステージ上のPDF",
+        "m_time_ms": "処理時間 (ms)",
+        "m_extracted_docs": "抽出済み書類",
+        "extracted_docs_header": "📋 抽出済み書類",
+        "bl_search_header": "🔍 B/L検索",
+        "no_extracted_docs": "抽出済みの書類はまだありません。",
+        "review_doc_header": "✏️ 書類レビュー",
+        "select_doc_review": "レビューする書類を選択",
+        "f_file": "ファイル",
+        "f_shipper": "荷送人",
+        "f_consignee": "荷受人",
+        "f_route": "航路",
+        "f_freight": "運賃",
+        "view_pdf": "📎 PDFを表示",
+        "download_pdf": "⬇️ PDFをダウンロード — {name}",
+        "pdf_download_note": "PDFはダウンロード後に開きます（SiSのセキュリティ制限）",
+        "f_status": "ステータス",
+        "pdf_issue": "PDFの問題: {err}",
+        "pdf_link_error": "リンクを生成できませんでした: {err}",
+        "alert_label": "**アラート:** {v}",
+        "no_anomalies": "異常は検出されませんでした",
+        "edit_review": "**✏️ 編集とレビュー**",
+        "f_container": "コンテナ番号",
+        "f_vessel": "船名",
+        "f_date_issue": "発行日",
+        "f_gross_weight": "総重量 (kg)",
+        "ai_confidence": "AI信頼度",
+        "status_derived_help": (
+            "検証結果から導出されます。異常のある書類は Pending_Review に留まり、"
+            "Synced_To_SAP には実際の SAP_FI_DOCUMENT が必要です。"
+        ),
+        "btn_approve": "✅ 承認",
+        "btn_reject": "❌ 却下",
+        "btn_sync_sap": "🔄 SAPへ連携",
+        "approved_msg": "承認しました: {v}",
+        "rejected_msg": "却下しました: {v}",
+        "synced_sap_msg": "SAPへ連携しました: {v}",
+        "approved_no_bl": "承認しました（BL_ID未連携のためSAP転記なし）",
+        "validation_unavailable": "検証を実行できませんでした: {err}",
+        "cannot_sync": (
+            "SAPへ連携できません — 未解決の異常: {v}。"
+            "項目を修正して先に承認してください。"
+        ),
+        "doc_load_error": "書類を読み込めませんでした: {err}",
+        "no_docs_to_review": "レビュー対象の書類がありません。",
+        "fraud_pipeline_subtitle": (
+            "較正済み検知 → Cortex AI調査 → 制裁スクリーニング → 自律アクション"
+        ),
+        "scope_all_alerts": "FRAUD_ALERT に記録された全アラートを対象としています。",
+        "scope_recent_decisions": (
+            "直近でAIが分析した {n} 件のアラートのみを対象としており、全期間では"
+            "ありません。全体の内訳は EVALUATE_AI_DECISIONS() を実行してください。"
+        ),
+        "sap_posting_label": "SAP転記: {v}",
+        "finops_cost_note": (
+            "トークン数は各呼び出しでCortexが返す実測値です。コストは**概算**です"
+            "（実トークン数 × AI_MODEL_RATE のモデル別参照クレジット単価 × "
+            "USD/クレジット）。正式な課金実績は "
+            "SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY です。"
+        ),
+        "finops_unavailable": "FinOpsデータを取得できません: {err}",
+        "export_ai_log": "📥 AIログをCSVで出力",
+        "top_consumer_detail": "**{name}**（{calls} 回呼び出し、{tokens} トークン）",
+        "insights_spinner": "AIがパターンを分析しています...",
+        "insights_header": "🧠 AIプロアクティブ・インサイト",
+        "insights_caption": (
+            "AIが1万件以上のレコードを分析し、経営レベルのインサイト"
+            "（リスク・機会・トレンド・異常）を生成します。"
+        ),
+        "generate_insights": "🧠 AIインサイトを生成",
+        "insights_data_label": "📊 データ: {v}",
+        "insights_failed": "インサイトの生成に失敗しました: {err}",
+        "unknown_error": "不明なエラー",
+        "finops_footer": "使用モデル: {model} | コスト警告: ${cost}/日 | ⚙️ 設定",
+        "all_config_scope": (
+            "APP_CONFIG の全キーです。上の4枚のカードはアプリが最も頻繁に読む値で、"
+            "こちらは何も隠さない完全な一覧です。"
+        ),
+        "sb_session": "**セッション**",
+        "sb_conversations": "**会話**",
+        "sb_new_chat": "➕ 新しい会話",
+        "sb_history": "履歴 ({n})",
+        "sb_msgs": "{n} 件 · {when}",
+        "sb_history_unavailable": (
+            "⚠️ 履歴を読み込めません — このセッション内では会話を続けられます。"
+        ),
+        "sb_why": "理由",
+        "sb_pipeline": "**パイプライン**",
+        "sb_delete_conversation": "🗑️ この会話を削除",
+        "view_generated_sql": "🔎 生成されたSQLを表示",
+        "chat_you": "あなた",
+        "chat_ai": "AIアシスタント",
+        "chat_analyzing": "質問を分析しています...",
+        "pipeline_done": "**パイプラインが完了しました。**",
+        "pipeline_failed": "**パイプラインエラー:** {err}",
+        "m_turns": "往復数",
+        "m_avg": "平均",
+        "export_transcript": "⬇️ 会話履歴を出力",
+        "chat_rows": "{n} 行",
+        "untitled": "無題",
+        "chat_welcome": (
+            "ロジスティクスデータについて何でも尋ねてください — サイドバーの"
+            "クイック質問を試すか、下に入力してください。回答はリアルタイムの"
+            "Snowflakeデータから生成され、使用したSQLも毎回表示されます。"
+        ),
+        "q_recent_sap": "最近のSAP転記",
+        "q_ai_decisions": "AI判定の内訳",
+        "f_bl_id": "B/L ID",
+        "compliance_passed": "✅ B/L #{id}: コンプライアンス適合",
+        "compliance_warning": "⚠️ B/L #{id}: コンプライアンス警告",
+        "compliance_failed": "🚨 B/L #{id}: コンプライアンス不適合",
+        "issues_found": "**検出された問題:**",
+        "full_details": "📋 詳細をすべて表示",
+        "compliance_error": "⚠️ コンプライアンスチェックに失敗しました: {err}",
+        "bulk_scan_error": "⚠️ 一括スキャンに失敗しました: {err}",
+        "screen_placeholder": "例: Nordic Maritime",
+        "sanctions_match": "🚨 制裁リストと**{n}件一致**しました。",
+        "sanctions_clear": "✅ **「{name}」** — 制裁該当なし（{n}件をスキャン）",
+        "full_screening_details": "📋 スキャニング詳細",
+        "screening_error": "⚠️ スキャニングに失敗しました: {err}",
+        "m_rate": "📈 レート",
+        "rate_stale": (
+            "⚠️ レートは{n}日前のものです。Marketplace提供元がこの通貨ペアを"
+            "最近更新していません。"
+        ),
+        "conversion_error": "⚠️ 換算に失敗しました: {err}",
+    },
+}
+
+for _lang, _strings in _PAGE_STRINGS.items():
+    TRANSLATIONS[_lang].update(_strings)
+
+
 def init_language():
     """Initialize language selector in sidebar. Call at top of each page."""
     if 'lang' not in st.session_state:

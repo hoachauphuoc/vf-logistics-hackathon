@@ -15,7 +15,7 @@ action_col1, action_col2 = st.columns(2)
 
 with action_col1:
     st.markdown(f"**{t['single_check']}**")
-    bl_id = st.number_input("B/L ID", min_value=1, max_value=10010, value=1)
+    bl_id = st.number_input(t["f_bl_id"], min_value=1, max_value=10010, value=1)
     if st.button(t["run_compliance"], type="primary"):
         with st.spinner(t["running_compliance"]):
             try:
@@ -25,25 +25,25 @@ with action_col1:
                 if isinstance(data, dict):
                     status = data.get("overall_status", data.get("status", "UNKNOWN"))
                     if status in ("PASS", "OK", "COMPLIANT"):
-                        st.success(f"✅ B/L #{bl_id}: Compliance PASSED")
+                        st.success(t["compliance_passed"].format(id=bl_id))
                     elif status == "WARNING":
-                        st.warning(f"⚠️ B/L #{bl_id}: Compliance WARNING")
+                        st.warning(t["compliance_warning"].format(id=bl_id))
                     else:
-                        st.error(f"🚨 B/L #{bl_id}: Compliance FAILED")
+                        st.error(t["compliance_failed"].format(id=bl_id))
                     
                     issues = data.get("issues", data.get("checks", []))
                     if issues:
-                        st.markdown("**Issues found:**")
+                        st.markdown(t["issues_found"])
                         for issue in (issues if isinstance(issues, list) else [issues]):
                             st.markdown(f"- {issue}")
                     
-                    with st.expander("📋 Full Details"):
+                    with st.expander(t["full_details"]):
                         for key, val in data.items():
                             st.markdown(f"**{key}:** {val}")
                 else:
                     st.info(str(data))
             except Exception as e:
-                st.error(f"⚠️ Compliance check failed: {str(e)[:150]}")
+                st.error(t["compliance_error"].format(err=str(e)[:150]))
 
 with action_col2:
     st.markdown(f"**{t['bulk_scan']}**")
@@ -62,13 +62,13 @@ with action_col2:
                 failed = data.get("failed", 0) if isinstance(data, dict) else 0
                 st.success(f"✅ {t['scan_complete'].format(passed=passed, failed=failed)}")
             except Exception as e:
-                st.error(f"⚠️ Bulk scan failed: {str(e)[:150]}")
+                st.error(t["bulk_scan_error"].format(err=str(e)[:150]))
 
 st.divider()
 
 # Sanction Screening
 st.subheader(t["sanction_title"])
-party_name = st.text_input(t["company_screen"], placeholder="e.g. Nordic Maritime")
+party_name = st.text_input(t["company_screen"], placeholder=t["screen_placeholder"])
 
 if st.button(t["screen_btn"]):
     with st.spinner(t["screening"]):
@@ -81,21 +81,21 @@ if st.button(t["screen_btn"]):
                 screened = data.get("entities_screened", data.get("total", 0))
                 
                 if matches and int(matches) > 0:
-                    st.error(f"🚨 **{matches} match(es) found** against sanctions list!")
+                    st.error(t["sanctions_match"].format(n=matches))
                     match_list = data.get("matched_entities", data.get("details", []))
                     if match_list and isinstance(match_list, list):
                         for m in match_list[:5]:
                             st.markdown(f"- ⚠️ {m}")
                 else:
-                    st.success(f"✅ **'{party_name}'** — No sanctions match (screened {int(screened):,} entities)")
+                    st.success(t["sanctions_clear"].format(name=party_name, n=f"{int(screened):,}"))
                 
-                with st.expander("📋 Full Screening Details"):
+                with st.expander(t["full_screening_details"]):
                     for key, val in data.items():
                         st.markdown(f"**{key}:** {val}")
             else:
                 st.info(str(data))
         except Exception as e:
-            st.error(f"⚠️ Screening failed: {str(e)[:150]}")
+            st.error(t["screening_error"].format(err=str(e)[:150]))
 
 st.divider()
 
@@ -140,10 +140,10 @@ if st.button(t["convert"]):
         
         r1, r2, r3 = st.columns(3)
         r1.metric(f"💵 {data.get('from', from_cur)}", f"{data.get('amount', amount):,.2f}")
-        r2.metric("📈 Rate", f"{data.get('rate', 0):,.4f}")
+        r2.metric(t["m_rate"], f"{data.get('rate', 0):,.4f}")
         r3.metric(f"💰 {data.get('to', to_cur)}", f"{data.get('converted', 0):,.2f}")
         
-        rate_date = data.get('rate_date', 'N/A')
+        rate_date = data.get('rate_date', t["not_available"])
         st.caption(f"{t['rate_date']}: {rate_date}")
         
         from datetime import datetime
@@ -151,8 +151,8 @@ if st.button(t["convert"]):
             rd = datetime.strptime(rate_date, "%Y-%m-%d")
             days_old = (datetime.now() - rd).days
             if days_old > 7:
-                st.warning(f"⚠️ Rate is {days_old} days old. Marketplace provider has not updated this currency pair recently.")
+                st.warning(t["rate_stale"].format(n=days_old))
         except:
             pass
     except Exception as e:
-        st.error(f"⚠️ Conversion failed: {str(e)[:150]}")
+        st.error(t["conversion_error"].format(err=str(e)[:150]))

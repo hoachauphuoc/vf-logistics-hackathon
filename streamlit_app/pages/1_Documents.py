@@ -6,64 +6,48 @@ import ui
 st.set_page_config(page_title="Documents", page_icon="📄", layout="wide")
 session = get_active_session()
 t = init_language()
+# Still needed for rename_columns(), which maps DataFrame column names per language.
 lang = st.session_state.lang
 
-ui.page_header(
-    t["bl_explorer_title"],
-    "Cortex AI extraction → deterministic validation → review → SAP posting"
-    if lang == "EN" else
-    "Trích xuất Cortex AI → kiểm tra tất định → duyệt → gửi SAP"
-    if lang == "VN" else
-    "Cortex AI抽出 → 検証 → レビュー → SAP転記"
-)
+ui.page_header(t["bl_explorer_title"], t["doc_pipeline_subtitle"])
 
 # --- Document Processing Section (replaces Mendix portal) ---
-st.subheader("📤 Document Processing" if lang == "EN" else "📤 Xử lý Chứng từ" if lang == "VN" else "📤 書類処理")
+st.subheader(t["doc_processing"])
 
-st.info(
-    "**To upload new PDFs:** In Snowsight left menu → **Ingestion** → **Load files into a Stage** → "
-    "select `MENDIX_APP.AGENTS.LOGISTICS_STAGE` → path `bill_of_lading/` → drag & drop PDFs. "
-    "Then click **Process** below."
-    if lang == "EN" else
-    "**Để upload PDF mới:** Menu trái Snowsight → **Ingestion** → **Load files into a Stage** → "
-    "chọn `MENDIX_APP.AGENTS.LOGISTICS_STAGE` → path `bill_of_lading/` → kéo thả PDF. "
-    "Sau đó bấm **Xử lý** bên dưới."
-)
+st.info(t["upload_instructions"])
 
 proc_col1, proc_col2 = st.columns(2)
 
 with proc_col1:
-    if st.button(
-        "🔄 Process New PDFs on Stage" if lang == "EN" else "🔄 Xử lý PDF mới trên Stage" if lang == "VN" else "🔄 新規PDF処理",
-        use_container_width=True
-    ):
-        with st.spinner("AI extracting fields from PDFs..." if lang == "EN" else "AI đang trích xuất..."):
+    if st.button(t["process_new_pdfs"], use_container_width=True):
+        with st.spinner(t["extract_spinner"]):
             try:
                 result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
                 st.success(result)
             except Exception as e:
-                st.error(f"Error: {str(e)[:200]}")
+                st.error(t["generic_error"].format(err=str(e)[:200]))
 
 with proc_col2:
-    if st.button(
-        "⚡ Ingest & Decide (Full Pipeline)" if lang == "EN" else "⚡ Nhập & Quyết định (Pipeline đầy đủ)" if lang == "VN" else "⚡ 取込＆判定",
-        type="primary",
-        use_container_width=True
-    ):
-        with st.spinner("Extract → Promote → Detect → Investigate → Screen → Decide..."):
+    if st.button(t["ingest_decide"], type="primary", use_container_width=True):
+        with st.spinner(t["ingest_spinner"]):
             try:
                 result = session.sql("CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE()").collect()[0][0]
-                st.success("Pipeline completed!" if lang == "EN" else "Hoàn tất pipeline!")
+                st.success(t["ingest_success"])
                 import json
                 try:
                     parsed = json.loads(result)
+                    pipeline = parsed.get("pipeline")
                     c1, c2 = st.columns(2)
-                    c1.metric("AI Decision", parsed.get("pipeline", {}).get("ai_decision", "N/A") if isinstance(parsed.get("pipeline"), dict) else "Done")
-                    c2.metric("Time (ms)", parsed.get("total_ms", "N/A"))
+                    c1.metric(
+                        t["ai_decision_metric"],
+                        pipeline.get("ai_decision", t["not_available"])
+                        if isinstance(pipeline, dict) else t["not_available"],
+                    )
+                    c2.metric(t["m_time_ms"], parsed.get("total_ms", t["not_available"]))
                 except Exception:
                     st.code(result, language="json")
             except Exception as e:
-                st.error(f"Error: {str(e)[:200]}")
+                st.error(t["ingest_error"].format(err=str(e)[:200]))
 
 # Stage file count
 try:
@@ -73,15 +57,15 @@ try:
     """).collect()[0]["CNT"]
     extracted_count = session.sql("SELECT COUNT(*) as CNT FROM BILL_OF_LADING_EXTRACTED").collect()[0]["CNT"]
     m1, m2 = st.columns(2)
-    m1.metric("PDFs on Stage" if lang == "EN" else "PDF trên Stage", stage_files)
-    m2.metric("Extracted Documents" if lang == "EN" else "Đã trích xuất", extracted_count)
+    m1.metric(t["m_pdfs_on_stage"], stage_files)
+    m2.metric(t["m_extracted_docs"], extracted_count)
 except Exception:
     pass
 
 st.divider()
 
 # --- Extracted Documents Review ---
-st.subheader("📋 Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 抽出書類")
+st.subheader(t["extracted_docs_header"])
 try:
     # Missing values are rendered as an em dash by ui.display_df rather than being
     # COALESCEd per column here. Streamlit prints a Python None as the literal text
@@ -109,12 +93,12 @@ try:
     if not extracted_df.empty:
         ui.show_table(extracted_df)
     else:
-        ui.empty_state("No extracted documents yet." if lang == "EN" else "Chưa có chứng từ trích xuất.")
+        ui.empty_state(t["no_extracted_docs"])
 except Exception as e:
     ui.load_error("Extracted documents", e)
 
 # --- Review / Edit Document (replaces Mendix edit action) ---
-st.subheader("✏️ Review Document" if lang == "EN" else "✏️ Duyệt Chứng từ" if lang == "VN" else "✏️ 書類レビュー")
+st.subheader(t["review_doc_header"])
 
 # Document selector
 try:
@@ -128,7 +112,7 @@ except Exception:
 
 if doc_options:
     selected_doc = st.selectbox(
-        "Select document to review" if lang == "EN" else "Chọn chứng từ",
+        t["select_doc_review"],
         options=list(doc_options.keys()),
         format_func=lambda x: f"DOC {x}: {doc_options.get(x, '')}",
         key="doc_selector"
@@ -149,49 +133,64 @@ if doc_options:
         left_col, right_col = st.columns([1, 1])
 
         with left_col:
-            st.markdown("**📄 Document Details**" if lang == "EN" else "**📄 Chi tiết Chứng từ**")
-            st.markdown(f"**File:** `{doc['FILE_NAME']}`")
-            st.markdown(f"**BL Number:** {doc['BL_NUMBER'] or 'N/A'}")
-            st.markdown(f"**Shipper:** {doc['SHIPPER_NAME'] or 'N/A'}")
-            st.markdown(f"**Consignee:** {doc['CONSIGNEE_NAME'] or 'N/A'}")
-            st.markdown(f"**Route:** {doc['PORT_OF_LOADING'] or '?'} → {doc['PORT_OF_DISCHARGE'] or '?'}")
-            st.markdown(f"**Freight:** ${doc['FREIGHT_CHARGES'] or 0:,.2f}")
+            st.markdown(f"**{t['doc_detail']}**")
+            st.markdown(f"**{t['f_file']}:** `{doc['FILE_NAME']}`")
+            st.markdown(f"**{t['bl_number']}:** {doc['BL_NUMBER'] or ui.EM_DASH}")
+            st.markdown(f"**{t['f_shipper']}:** {doc['SHIPPER_NAME'] or ui.EM_DASH}")
+            st.markdown(f"**{t['f_consignee']}:** {doc['CONSIGNEE_NAME'] or ui.EM_DASH}")
+            st.markdown(
+                f"**{t['f_route']}:** {doc['PORT_OF_LOADING'] or ui.EM_DASH}"
+                f" → {doc['PORT_OF_DISCHARGE'] or ui.EM_DASH}"
+            )
+            # Freight was printed as $0.00 when FREIGHT_CHARGES was NULL, which
+            # asserts a zero charge the data never recorded. Absent stays absent.
+            st.markdown(
+                f"**{t['f_freight']}:** "
+                + (f"${doc['FREIGHT_CHARGES']:,.2f}"
+                   if doc['FREIGHT_CHARGES'] is not None else ui.EM_DASH)
+            )
 
             # PDF preview link - always generate fresh URL (presigned URLs expire after 1 hour)
-            if st.button("📎 View PDF", key="gen_pdf_link"):
+            if st.button(t["view_pdf"], key="gen_pdf_link"):
                 try:
                     url = session.sql(f"CALL GET_PDF_URL({selected_doc})").collect()[0][0]
                     if url and str(url).startswith("http"):
+                        label = t["download_pdf"].format(name=doc["FILE_NAME"].split("/")[-1])
                         st.markdown(
                             f'<a href="{url}" target="_blank" style="background:#1f77b4;color:white;'
                             f'padding:8px 16px;border-radius:4px;text-decoration:none;">'
-                            f'⬇️ Download PDF — {doc["FILE_NAME"].split("/")[-1]}</a>'
-                            f'<br><small style="color:#888;">PDF opens after download (SiS security limitation)</small>',
+                            f'{label}</a>'
+                            f'<br><small style="color:#888;">{t["pdf_download_note"]}</small>',
                             unsafe_allow_html=True
                         )
                     else:
-                        st.caption(f"PDF issue: {str(url)[:100]}")
+                        st.caption(t["pdf_issue"].format(err=str(url)[:100]))
                 except Exception as e:
-                    st.caption(f"Could not generate link: {str(e)[:100]}")
+                    st.caption(t["pdf_link_error"].format(err=str(e)[:100]))
 
-            # Alert info
-            if doc['ALERT'] and doc['ALERT'] != 'No anomalies detected':
-                st.warning(f"**Alert:** {doc['ALERT']}")
+            # ALERT is NULL when the deterministic validator finds nothing. It used
+            # to be stored as the English sentence "No anomalies detected", which
+            # forced this branch to compare against an English magic string and
+            # showed that sentence to Japanese and Vietnamese users. The sentinel is
+            # now removed at source, so absence of an alert is simply NULL and the
+            # reassuring message is a translated UI string.
+            if doc['ALERT']:
+                st.warning(t["alert_label"].format(v=doc['ALERT']))
                 if doc['ALERT_RESPONSE']:
                     st.caption(doc['ALERT_RESPONSE'])
             else:
-                st.success("No anomalies detected")
+                st.success(t["no_anomalies"])
 
         with right_col:
-            st.markdown("**✏️ Edit & Review**" if lang == "EN" else "**✏️ Chỉnh sửa & Duyệt**")
+            st.markdown(t["edit_review"])
 
             # Editable fields
-            edit_container = st.text_input("Container number", value=doc['CONTAINER_NUMBER'] or '', key="ed_container")
-            edit_vessel = st.text_input("Vessel name", value=doc['VESSEL_NAME'] or '', key="ed_vessel")
-            edit_date = st.text_input("Date of issue", value=str(doc['DATE_OF_ISSUE'] or ''), key="ed_date")
-            edit_weight = st.text_input("Gross weight (kg)", value=str(doc['GROSS_WEIGHT_KG'] or ''), key="ed_weight")
+            edit_container = st.text_input(t["f_container"], value=doc['CONTAINER_NUMBER'] or '', key="ed_container")
+            edit_vessel = st.text_input(t["f_vessel"], value=doc['VESSEL_NAME'] or '', key="ed_vessel")
+            edit_date = st.text_input(t["f_date_issue"], value=str(doc['DATE_OF_ISSUE'] or ''), key="ed_date")
+            edit_weight = st.text_input(t["f_gross_weight"], value=str(doc['GROSS_WEIGHT_KG'] or ''), key="ed_weight")
 
-            st.metric("AI Confidence", f"{doc['CONFIDENCE_SCORE'] or 0}/100")
+            st.metric(t["ai_confidence"], f"{doc['CONFIDENCE_SCORE'] or 0}/100")
 
             # STATUS is derived by the backend from the validation result and from
             # whether a SAP document actually exists, so it is shown read-only.
@@ -200,13 +199,9 @@ if doc_options:
             # did nothing at all, and it implied a reviewer could mark a flagged
             # document as Synced_To_SAP by hand.
             ui.readonly_field(
-                "Status",
+                t["f_status"],
                 doc['STATUS'] or ui.EM_DASH,
-                "Derived from validation state: a document with anomalies stays in "
-                "Pending_Review, and Synced_To_SAP requires a real SAP_FI_DOCUMENT."
-                if lang == "EN" else
-                "Suy ra từ kết quả kiểm tra: chứng từ có bất thường luôn ở "
-                "Pending_Review, và Synced_To_SAP bắt buộc phải có SAP_FI_DOCUMENT thật."
+                t["status_derived_help"],
             )
 
             st.markdown("---")
@@ -214,7 +209,7 @@ if doc_options:
             # Action buttons
             btn_col1, btn_col2, btn_col3 = st.columns(3)
             with btn_col1:
-                if st.button("✅ Approve", key="btn_approve", type="primary", use_container_width=True):
+                if st.button(t["btn_approve"], key="btn_approve", type="primary", use_container_width=True):
                     try:
                         import json
                         corrections = {}
@@ -243,22 +238,22 @@ if doc_options:
                             result = session.sql(
                                 f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'APPROVE', NULL, 'Approved via Streamlit', NULL)"
                             ).collect()[0][0]
-                        st.success(f"Approved! {result}")
+                        st.success(t["approved_msg"].format(v=result))
                     except Exception as e:
                         st.error(str(e)[:150])
 
             with btn_col2:
-                if st.button("❌ Reject", key="btn_reject", use_container_width=True):
+                if st.button(t["btn_reject"], key="btn_reject", use_container_width=True):
                     try:
                         result = session.sql(
                             f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'REJECT', NULL, 'Rejected via Streamlit', NULL)"
                         ).collect()[0][0]
-                        st.warning(f"Rejected. {result}")
+                        st.warning(t["rejected_msg"].format(v=result))
                     except Exception as e:
                         st.error(str(e)[:150])
 
             with btn_col3:
-                if st.button("🔄 Sync to SAP", key="btn_sap", use_container_width=True):
+                if st.button(t["btn_sync_sap"], key="btn_sap", use_container_width=True):
                     try:
                         # A document with unresolved anomalies must not reach SAP. This is
                         # the same rule the data-integrity fix enforces server-side; the
@@ -271,16 +266,10 @@ if doc_options:
                         """).collect()[0]["A"]
                     except Exception as e:
                         blocking_alert = None
-                        st.caption(f"Validation check unavailable: {str(e)[:80]}")
+                        st.caption(t["validation_unavailable"].format(err=str(e)[:80]))
 
                     if blocking_alert:
-                        st.error(
-                            f"Cannot sync to SAP — unresolved anomalies: {blocking_alert}. "
-                            "Correct the fields and approve first."
-                            if lang == "EN" else
-                            f"Không thể đồng bộ SAP — còn bất thường: {blocking_alert}. "
-                            "Hãy sửa dữ liệu và duyệt trước."
-                        )
+                        st.error(t["cannot_sync"].format(v=blocking_alert))
                     else:
                         try:
                             # First approve, then sync
@@ -291,21 +280,21 @@ if doc_options:
                             bl_id_row = session.sql(f"SELECT BL_ID FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {selected_doc}").collect()
                             if bl_id_row and bl_id_row[0]['BL_ID']:
                                 sap_result = session.sql(f"CALL SAP_POST_FI_DOCUMENT({bl_id_row[0]['BL_ID']})").collect()[0][0]
-                                st.success(f"Synced to SAP! {sap_result}")
+                                st.success(t["synced_sap_msg"].format(v=sap_result))
                             else:
-                                st.success("Approved (no BL_ID linked yet for SAP)")
+                                st.success(t["approved_no_bl"])
                         except Exception as e:
                             st.error(str(e)[:150])
 
     except Exception as e:
-        st.error(f"Could not load document: {str(e)[:150]}")
+        st.error(t["doc_load_error"].format(err=str(e)[:150]))
 else:
-    st.info("No extracted documents to review." if lang == "EN" else "Không có chứng từ để duyệt.")
+    st.info(t["no_docs_to_review"])
 
 st.divider()
 
 # --- Bill of Lading Explorer ---
-st.subheader("🔍 Bill of Lading Explorer" if lang == "EN" else "🔍 Tra cuu Van don" if lang == "VN" else "🔍 B/L検索")
+st.subheader(t["bl_search_header"])
 
 with st.expander(t["filters"], expanded=False):
     fc1, fc2, fc3, fc4 = st.columns(4)

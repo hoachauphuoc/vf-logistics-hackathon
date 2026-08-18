@@ -14,24 +14,14 @@ session = get_active_session()
 # header column instead, which meant the control moved position when you
 # navigated from the home page to any sub-page, and the sidebar selector was
 # missing here entirely. One control, one place.
-init_language()
-lang = st.session_state.lang
+t = init_language()
 
-# Header
-titles = {
-    "EN": "🚢 VF Logistics Command Center",
-    "VN": "🚢 Trung tâm Điều hành VF Logistics",
-    "JA": "🚢 VF Logistics コマンドセンター",
-}
-subtitles = {
-    "EN": "Real-time maritime logistics intelligence • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
-    "VN": "Thông tin logistics hàng hải thời gian thực • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
-    "JA": "リアルタイム海運ロジスティクス • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
-}
-ui.page_header(titles[lang], subtitles[lang])
+# Header. The title/subtitle dicts that used to live here already covered all
+# three languages; they now live in TRANSLATIONS so every string has one home.
+ui.page_header(t["home_title"], t["home_subtitle"])
 
 # KPI Section with loading
-with st.spinner("Loading KPIs..." if lang == "EN" else "Đang tải..."):
+with st.spinner(t["loading_kpis"]):
     try:
         kpis = session.sql("""
             SELECT COUNT(*) as TOTAL, SUM(TOTAL_CHARGES) as REVENUE,
@@ -45,18 +35,18 @@ with st.spinner("Loading KPIs..." if lang == "EN" else "Đang tải..."):
         """).collect()[0]
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📦 Shipments", f"{kpis['TOTAL']:,}")
-        c2.metric("💰 Revenue", f"${kpis['REVENUE']:,.0f}")
-        c3.metric("⏳ Pending", f"{kpis['PENDING']:,}")
-        c4.metric("🚢 Carriers", f"{kpis['CARRIERS']}")
+        c1.metric(t["m_shipments"], f"{kpis['TOTAL']:,}")
+        c2.metric(t["m_revenue"], f"${kpis['REVENUE']:,.0f}")
+        c3.metric(t["m_pending"], f"{kpis['PENDING']:,}")
+        c4.metric(t["m_carriers"], f"{kpis['CARRIERS']}")
 
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("✅ Approved", f"{kpis['APPROVED']:,}")
-        c6.metric("🚀 In Transit", f"{kpis['TRANSIT']:,}")
-        c7.metric("📊 Avg Charge", f"${kpis['AVG_CHG']:,.0f}")
-        c8.metric("⚖️ Weight", f"{kpis['WEIGHT']/1e6:.1f}M kg")
+        c5.metric(t["m_approved"], f"{kpis['APPROVED']:,}")
+        c6.metric(t["m_in_transit"], f"{kpis['TRANSIT']:,}")
+        c7.metric(t["m_avg_charge"], f"${kpis['AVG_CHG']:,.0f}")
+        c8.metric(t["m_weight"], f"{kpis['WEIGHT']/1e6:.1f}M kg")
     except Exception as e:
-        st.error(f"KPI error: {str(e)[:80]}")
+        st.error(t["home_kpi_error"].format(err=str(e)[:80]))
 
 st.divider()
 
@@ -64,7 +54,7 @@ st.divider()
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
-    st.subheader("💰 Revenue by Carrier")
+    st.subheader(t["chart_revenue_by_carrier"])
     try:
         carrier_df = session.sql("""
             SELECT CARRIER_NAME, SUM(TOTAL_CHARGES) as REVENUE, COUNT(*) as SHIPMENTS
@@ -77,17 +67,18 @@ with chart_col1:
         fig = go.Figure(go.Bar(
             x=carrier_names, y=carrier_revenue, marker_color=ui.accent_ramp(n),
             customdata=carrier_shipments,
-            hovertemplate="Carrier: %{x}<br>Revenue: $%{y:,.0f}<br>Shipments: %{customdata}<extra></extra>"
+            hovertemplate=(f"{t['ax_carrier']}: %{{x}}<br>{t['ax_revenue']}: $%{{y:,.0f}}"
+                           f"<br>{t['ax_shipments']}: %{{customdata}}<extra></extra>")
         ))
-        fig.update_layout(**ui.chart_layout(height=350, xaxis_title="Carrier",
-                                            yaxis_title="Revenue (USD)"))
+        fig.update_layout(**ui.chart_layout(height=350, xaxis_title=t["ax_carrier"],
+                                            yaxis_title=t["ax_revenue_usd"]))
         fig.update_xaxes(tickangle=45, categoryorder="array", categoryarray=carrier_names)
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         ui.load_error("Revenue by carrier", e)
 
 with chart_col2:
-    st.subheader("📊 Shipment Status Distribution")
+    st.subheader(t["chart_status_dist"])
     try:
         status_df = session.sql("""
             SELECT STATUS, COUNT(*) as COUNT FROM BILL_OF_LADING GROUP BY STATUS ORDER BY COUNT DESC
@@ -112,7 +103,7 @@ st.divider()
 chart_col3, chart_col4 = st.columns(2)
 
 with chart_col3:
-    st.subheader("📈 Weekly Shipment Volume & Revenue")
+    st.subheader(t["chart_weekly"])
     try:
         weekly_df = session.sql("""
             SELECT DATE_TRUNC('WEEK', CREATED_AT)::DATE as WEEK,
@@ -126,29 +117,31 @@ with chart_col3:
             revenue = weekly_df["REVENUE"].astype(float).tolist()
             fig = go.Figure()
             fig.add_trace(go.Bar(x=weeks, y=shipments,
-                                name="Shipments", marker_color=ui.BRAND_BLUE, opacity=0.75,
-                                hovertemplate="Week: %{x}<br>Shipments: %{y}<extra></extra>"))
+                                name=t["ax_shipments"], marker_color=ui.BRAND_BLUE, opacity=0.75,
+                                hovertemplate=(f"{t['ax_week']}: %{{x}}<br>"
+                                               f"{t['ax_shipments']}: %{{y}}<extra></extra>")))
             # Revenue is plotted on its own axis at its true magnitude. It was
             # previously divided by 100 and the axis was labelled "Revenue/100",
             # which leaked a plotting workaround into the UI and forced the
             # reader to do arithmetic. A secondary axis with a compact tick
             # format shows the real number.
             fig.add_trace(go.Scatter(x=weeks, y=revenue,
-                                    name="Revenue", line=dict(color=ui.BRAND_CYAN, width=3),
+                                    name=t["ax_revenue"], line=dict(color=ui.BRAND_CYAN, width=3),
                                     yaxis="y2",
-                                    hovertemplate="Week: %{x}<br>Revenue: $%{y:,.0f}<extra></extra>"))
+                                    hovertemplate=(f"{t['ax_week']}: %{{x}}<br>"
+                                                   f"{t['ax_revenue']}: $%{{y:,.0f}}<extra></extra>")))
             fig.update_layout(**ui.chart_layout(
                 height=350, showlegend=True,
                 legend=dict(orientation="h", y=1.12, x=0),
-                yaxis=dict(title="Shipments", gridcolor="rgba(139,148,158,0.12)"),
-                yaxis2=dict(title="Revenue (USD)", overlaying='y', side='right',
+                yaxis=dict(title=t["ax_shipments"], gridcolor="rgba(139,148,158,0.12)"),
+                yaxis2=dict(title=t["ax_revenue_usd"], overlaying='y', side='right',
                             showgrid=False, tickformat="$~s")))
             st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         ui.load_error("Weekly volume", e)
 
 with chart_col4:
-    st.subheader("🌍 Top Routes (Origin → Destination)")
+    st.subheader(t["chart_top_routes"])
     try:
         route_df = session.sql("""
             SELECT PORT_OF_LOADING_LOCODE || ' → ' || PORT_OF_DISCHARGE_LOCODE as ROUTE,
@@ -164,9 +157,10 @@ with chart_col4:
             fig = go.Figure(go.Bar(
                 x=shipments, y=routes, orientation='h', marker_color=ui.accent_ramp(len(routes)),
                 customdata=revenue,
-                hovertemplate="Route: %{y}<br>Shipments: %{x}<br>Revenue: $%{customdata:,.0f}<extra></extra>"
+                hovertemplate=(f"{t['ax_route']}: %{{y}}<br>{t['ax_shipments']}: %{{x}}"
+                               f"<br>{t['ax_revenue']}: $%{{customdata:,.0f}}<extra></extra>")
             ))
-            fig.update_layout(**ui.chart_layout(height=350, xaxis_title="Shipments"))
+            fig.update_layout(**ui.chart_layout(height=350, xaxis_title=t["ax_shipments"]))
             fig.update_yaxes(categoryorder="array", categoryarray=routes[::-1])
             st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
@@ -175,43 +169,40 @@ with chart_col4:
 st.divider()
 
 # Marketplace + Pipeline Section
-st.subheader("🌐 Live Data & Pipeline")
+st.subheader(t["live_data_pipeline"])
 mk1, mk2, mk3, mk4 = st.columns(4)
 
 with mk1:
-    st.markdown("**💱 FX Rates (USD)**")
+    st.markdown(f"**{t['exchange_rates']}**")
     try:
         fx = session.sql("SELECT QUOTE_CURRENCY_ID as CCY, EXCHANGE_RATE as RATE FROM V_EXCHANGE_RATES ORDER BY 1").to_pandas()
         if not fx.empty:
             ui.show_table(fx.set_index("CCY"), height=200)
     except:
-        st.info("FX unavailable")
+        st.info(t["fx_unavailable"])
 
 with mk2:
-    st.markdown("**🛡️ Sanctions DB**")
+    st.markdown(f"**{t['sanctions_db']}**")
     try:
         sc = session.sql("SELECT COUNT(*) as C FROM V_EXPORT_RESTRICTED_ENTITIES").collect()[0]["C"]
-        st.metric("Entities", f"{sc:,}")
-        st.caption("US ITA Export Screening")
+        st.metric(t["entities"], f"{sc:,}")
+        st.caption(t["sanctions_source"])
     except:
-        st.info("N/A")
+        st.info(t["not_available"])
 
 with mk3:
-    st.markdown("**🤖 AI Usage (24h)**")
+    st.markdown(f"**{t['ai_usage_24h']}**")
     try:
         ai = session.sql("SELECT COUNT(*) as CALLS FROM AI_CALL_LOG WHERE CALL_TIMESTAMP > DATEADD('DAY',-1,CURRENT_TIMESTAMP())").collect()[0]["CALLS"]
-        st.metric("AI Calls", f"{ai}")
+        st.metric(t["ai_calls"], f"{ai}")
     except:
-        st.metric("AI Calls", "N/A")
+        st.metric(t["ai_calls"], t["not_available"])
 
 with mk4:
-    st.markdown("**⚡ Pipeline Demo**")
-    st.caption(
-        "Run the real autonomous pipeline (detect → AI investigate → sanctions screen → SAP post) from the Fraud Detection page."
-        if lang == "EN" else
-        "Chạy pipeline tự động thật (phát hiện → AI điều tra → sàng lọc cấm vận → gửi SAP) tại trang Fraud Detection."
-    )
+    st.markdown(f"**{t['pipeline_demo']}**")
+    st.caption(t["pipeline_demo_desc"])
 
-# Footer
+# Footer. Brand name, version and event are proper nouns, so only the
+# descriptive part is translated.
 st.divider()
 st.caption("VF Logistics v2.1 • Snowflake Cortex AI • Team SORA • CoCo CLI Hackathon 2026")

@@ -138,11 +138,11 @@ If you are reproducing this on the author's workstation, note that the local `sn
 
 The **Streamlit UI (Documents page and AI Chat sidebar), the Cortex Agent, and Python/Snowpark all call this same procedure**, so every interface executes identical logic.
 
-Fully hands-off operation is one statement away — a stream on the stage already feeds a task:
+Fully hands-off operation is already live — a stream on the stage feeds a task that is now running:
 ```sql
-ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;   -- fires on new files, every 5 min
+SHOW TASKS IN SCHEMA MENDIX_APP.AGENTS;   -- all 7 report state = started
 ```
-It ships **suspended** so an idle trial account is not billed.
+`TASK_PROCESS_NEW_BL` fires within 5 minutes of a new PDF landing on the stage. To stop billing on an idle account, suspend them again with `ALTER TASK ... SUSPEND`.
 
 ### Option B — Fraud pipeline only (fastest live demo, no upload needed)
 ```bash
@@ -228,6 +228,7 @@ vf-logistics-hackathon/
 │   │   ├── hardened_objects.sql          Hardened tables/views, exported from GET_DDL
 │   │   ├── chat_persistence.sql          Chat history tables + 6 owner-rights procedures
 │   │   ├── document_data_integrity.sql   Deterministic BL validation + integrity assertions
+│   │   ├── pipeline_reliability.sql      Duplicate-PK fix, sentinel removal, task automation
 │   │   └── run_full_workflow_demo.sql    CLI demo script
 │   └── monitoring/
 │       └── CREDIT_MONITORING_GUIDE.md
@@ -300,7 +301,7 @@ Stated up front rather than left for a reviewer to discover:
 - **Document validation is deterministic SQL, not a generative decision — and it was not always.** During the Refinement Phase the extracted-documents table was audited and found to contain self-contradicting rows. `PROCESS_BL_DOCUMENTS` computed `CONFIDENCE_SCORE` from four deterministic field checks but produced `ALERT` from a **second, independent** `CORTEX.COMPLETE` call asked to apply the same four rules in prose. Two separate judges of identical facts eventually disagreed, and they did: `DOC 402` carried `ALERT = 'ContainerNumber; VesselName; GrossWeightKg'` while simultaneously carrying `CONFIDENCE_SCORE = 100` and `STATUS = 'Synced_To_SAP'` — a document whose container number was the placeholder `XXXX0000000` was presented to reviewers as perfectly extracted and already posted to SAP. Worse, the LLM's verdict was itself wrong: two of its three flags were hallucinated (`MAERSK SENTOSA` and `24500 kg` are both valid) while the real defect — an Evergreen bill of lading on a Maersk vessel — went unreported. The rules are now a single deterministic function, `BL_DOC_ALERT`, and the confidence score is *derived from it*, so the score and the alert are mathematically incapable of disagreeing. Cortex still writes `ALERT_RESPONSE`, the human-readable explanation, but it is told the authoritative verdict and instructed not to re-decide it. **A generative call may narrate a validation outcome; it must not determine one.** Two further defects were fixed in the same pass: five rows claimed `Synced_To_SAP` with no `SAP_FI_DOCUMENT` behind them (`STATUS` is now derived from whether that row actually exists, and one document was genuinely posted rather than relabelled — no financial amounts were invented for the rest), and three rows stored a tonnes value in the kilogram column (`24.5` where peers held `24500`), which the old rule accepted because it only rejected `<= 0`. Reproducible in [`sql/workflows/document_data_integrity.sql`](sql/workflows/document_data_integrity.sql), which ends in five assertions that must each return zero rows.
 - **Two rows are deliberate adversarial test fixtures, and they are named as such.** `TESTFIXTURE-SHELLCO-01/02` carry shell-company counterparty names so the `SUSPICIOUS_PARTY` detection rule and the name-based BLOCK branch of the rubric are actually exercised. They are labelled in `REMARKS` rather than disguised as organic shipments. A previous scripted helper that seeded such rows on demand (`DEMO_PIPELINE()`) has been dropped from the database.
 - **The bad-data PDFs are intentional fixtures too.** Files named `*_ERROR.pdf` (`XXXX0000000` container numbers, `MSK@#$%789`, zero weights) exist so the extraction-confidence and anomaly paths are genuinely exercised rather than demonstrated on clean input. They are correctly scored below 100 and held in `Pending_Review`; they are the validation working, not defects. `BL_COSCO_COSU2026013_ERROR.pdf` is the one exception worth naming — every extracted field on it passes all six rules, so it scores 100. Its filename promises an error that the extracted data does not contain.
-- **Scheduled tasks ship suspended** to protect trial credits; the pipeline is triggered on demand. One `ALTER TASK ... RESUME` makes it fully hands-off.
+- **Scheduled tasks are running** (all 7 `started`), so the pipeline is hands-off; they can still be triggered on demand. Suspend them with `ALTER TASK ... SUSPEND` to conserve trial credits.
 - **The UI contributes no business logic.** The Streamlit app calls procedures and renders results; every decision is made inside Snowflake. This was equally true of the removed Mendix portal, which is why consolidating into Streamlit changed no backend behaviour.
 
 ---
@@ -360,6 +361,37 @@ After being shortlisted, 3 evaluator feedback items were addressed:
 - Fix: Changed to `EXECUTE AS OWNER` with a per-file exception handler that logs errors to `ERROR_LOG` and continues processing remaining files, returning a JSON status summary instead of throwing
 - Auto-sync merged: `SYNC_EXTRACTED_TO_BILL_OF_LADING()` is now called automatically at the end of `PROCESS_BL_DOCUMENTS`, eliminating the need for a separate sync step
 
+**A second, deeper ingestion failure was found only after enabling the scheduled tasks.** `TASK_PROCESS_NEW_BL` failed on every run with
+`A SELECT INTO statement expects exactly 1 returned row`, raised inside `WORKFLOW_FULL_PIPELINE_V2`.
+
+- The error message reads like a zero-row problem, but it is not: a `SELECT ... INTO` returning **no** rows simply leaves the variable NULL. The message means the query returned **more than one** row. This was confirmed by test rather than assumed.
+- Root cause: **`FRAUD_ALERT.ALERT_ID` contained 20 duplicated ids across 40 rows.** The column is declared `autoincrement start 800` *and* `primary key (ALERT_ID)` — but **Snowflake does not enforce PRIMARY KEY or UNIQUE constraints**. Seed rows had already been inserted with explicit ids in the 800–1223 range, so once the autoincrement counter reached 800 it began handing out ids that already existed. Every lookup of the form `WHERE ALERT_ID = :v_alert_id` then returned two rows and aborted the task.
+- Fix, in three parts:
+  1. **Data** — the 20 colliding rows are genuinely different alerts, not duplicates, so they were renumbered (not deleted) to fresh ids 1224–1243, keyed on `(ALERT_ID, CREATED_AT)` after verifying that pair is unique. `FRAUD_ALERT` is now 476 rows with 476 distinct ids.
+  2. **Generator** — the autoincrement counter (at 1008, still below the maximum id of 1243, so ~235 further collisions were queued up) was advanced past the maximum. Snowflake offers no way to reseed an identity column, and `ALTER COLUMN ... SET DEFAULT <seq>.NEXTVAL` fails with `Unsupported feature 'Alter Column Set Default'`, so the counter was burned forward with a throwaway bulk insert that was then deleted.
+  3. **Code** — the four id lookups in `WORKFLOW_FULL_PIPELINE_V2` were hardened (`LIMIT 1`, and scalar subqueries where a NULL result is meaningful) so that a future collision degrades gracefully instead of stopping the automation.
+- Verified: `WORKFLOW_INGEST_AND_DECIDE()` — the exact task body that had failed — now returns `{"status":"COMPLETED", ...}`.
+
+**A related correctness defect was removed at the same time.** `PROCESS_BL_DOCUMENTS` wrapped the deterministic validator in
+`COALESCE(BL_DOC_ALERT(...), 'No anomalies detected')`, storing an English sentence where the absence of a finding should simply be NULL. That single choice cost three things: `SYNC_EXTRACTED_TO_BILL_OF_LADING` had to `NULLIF` the sentence back out, the Documents page had to compare against an English magic string, and `ALERT IS NOT NULL` counted seven clean documents as alerted. The `COALESCE` is gone, the seven stored sentinels were set to NULL, and "no anomalies detected" is now a translated UI string.
+
+### Fix 1b: Scheduled automation enabled
+All 7 tasks were previously left `suspended`, so nothing ran unless a human pressed a button. They are now `started`:
+
+| Task | Schedule | Trigger | Calls |
+|---|---|---|---|
+| `TASK_PROCESS_NEW_BL` | 5 min | `SYSTEM$STREAM_HAS_DATA(NEW_PDF_STREAM)` | `WORKFLOW_INGEST_AND_DECIDE()` |
+| `TASK_FRAUD_SCAN` | 60 min | unconditional | `WORKFLOW_DETECT_AND_ACT(100)` |
+| `TASK_COMPLIANCE_CHECK` | 30 min | unconditional | `CHECK_COMPLIANCE` on one unchecked B/L |
+| `TASK_REFRESH_PDF_URLS` | 50 min | unconditional | `REFRESH_PDF_PRESIGNED_URLS()` |
+| `TASK_AI_EXPLAIN_ANOMALY` | 120 min | unconditional | `AI_EXPLAIN_ANOMALY` on one HIGH/OPEN alert |
+| `TASK_NOTIFY_HIGH_FRAUD` | 240 min | unconditional | `NOTIFY_HIGH_FRAUD_ALERTS()` |
+| `TASK_GENERATE_WEEKLY_INSIGHTS` | Mon 08:00 UTC | unconditional | `AI_GENERATE_INSIGHTS()` |
+
+`TASK_FRAUD_SCAN` was **rewritten before being resumed**, because its stored body contradicted this document. It carried an inline `INSERT` with the hardcoded thresholds `TOTAL_CHARGES > 50000`, `GROSS_WEIGHT_KGS > 100000` and `cost/kg > 10` — precisely the magic numbers that §7.1 says were replaced by percentile calibration. It also bypassed the queue-backpressure logic and emitted an `ALERT_TYPE` of `NEW_PARTY_CHECK`, an eighth value absent from the documented enum and, as the `ELSE` branch, destined to become the most common one. Resuming it as written would have quietly refilled the table with uncalibrated alerts. It now calls `WORKFLOW_DETECT_AND_ACT(100)`, which recomputes p99/p95/median thresholds on every run, caps output at 8 alerts per rule, deduplicates by `BL_ID` and throttles when the open queue is full. Its `WHEN SYSTEM$STREAM_HAS_DATA(BL_CHANGE_STREAM)` condition was removed in the same change, because the new body does not consume that stream and the condition would therefore never have cleared — the task would have fired every 5 minutes forever. Its interval was relaxed from 5 to 60 minutes, since a full-table percentile scan every 5 minutes is wasteful and would sit permanently at the alert cap.
+
+Cost profile: `TASK_PROCESS_NEW_BL` is stream-gated, so it consumes nothing until a PDF actually lands. `TASK_AI_EXPLAIN_ANOMALY`, `TASK_COMPLIANCE_CHECK` and `TASK_GENERATE_WEEKLY_INSIGHTS` invoke Cortex and are the only meaningful credit consumers; each processes at most one record per run.
+
 ### Fix 2: Merge External Sandbox Portal with Native Streamlit
 - **Mendix removed as the interface** — all operator functionality consolidated into Streamlit-in-Snowflake
 - Added **Process New PDFs on Stage** button: `CALL PROCESS_BL_DOCUMENTS()` runs Cortex extraction + auto-sync from the UI
@@ -382,6 +414,15 @@ After being shortlisted, 3 evaluator feedback items were addressed:
 - Sidebar also includes quick-question buttons, a **Run Full Pipeline** button, **Export transcript**, and **Delete this conversation**
 - Every Cortex call is logged to `AI_CALL_LOG` for cost/usage attribution
 - Implemented with `st.text_input` + `st.markdown` rather than `st.chat_message`/`st.chat_input`, because the SiS runtime is Streamlit 1.22 (see *Known Limitations*)
+
+### Fix 3b: Trilingual UI actually switches language
+The app advertises English / 日本語 / Tiếng Việt, and `i18n.py` was already complete — 214 keys defined identically for all three languages. The pages, however, largely bypassed it, so the selector did far less than it appeared to:
+
+- **28 inline `if lang == "EN" else ...` chains had only an English and a Vietnamese branch.** Selecting 日本語 fell through to Vietnamese. A Japanese reviewer switching language would have seen Vietnamese text on the Documents page, the Settings page, the FinOps cost note, and throughout AI Chat.
+- **Dozens of labels were plain English literals with no branch at all** — every KPI tile on the home page, every chart title and axis label, all four editable field labels and all three action buttons on the review panel, and roughly eighteen result messages on the Compliance page.
+- **The Vietnamese written inline had no diacritics.** `6_AI_Chat.py` shipped `"Phien"`, `"Hoi thoai moi"`, `"Lich su"`, `"Dat cau hoi"`, `"Ban"`, `"Tro ly AI"` and all five quick-question prompts as unaccented ASCII, which reads as broken Vietnamese rather than a translation — while `i18n.py` already held correctly accented equivalents that were never used.
+
+All of it now resolves through `TRANSLATIONS`. `2_Compliance.py`'s existing style — look up `t["key"]`, never branch on language — was applied to every page. Result: **346 keys × 3 languages with identical key sets, and zero language conditionals in all seven page files** (verified by script, along with zero references to undefined keys and matching `{}` placeholders across the three languages, since a placeholder present in English but missing in Japanese would raise `KeyError` at render time).
 
 ### Known Limitations (Streamlit-in-Snowflake runtime 1.22)
 These are platform constraints of the SiS runtime, not defects in the solution. They are documented here rather than hidden, since two of them are visible trade-offs versus the removed Mendix UI:
@@ -421,6 +462,17 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | `ui.display_df` NULL handling | Unit-tested: `None`/`NaN`/`NaT` all render as an em dash, fully-populated columns keep their original dtype, and the input DataFrame is not mutated |
 | Chat cross-user isolation | Writing to, deleting, or loading another user's conversation all correctly refused |
 | Chat payload escaping | Result JSON containing single quotes and backslashes round-trips as valid JSON and rebuilds into a DataFrame |
+| `FRAUD_ALERT.ALERT_ID` uniqueness | 0 duplicate ids across 476 rows (was 20 duplicated ids over 40 rows); autoincrement counter advanced to 1349, above the maximum id of 1243 |
+| `WORKFLOW_INGEST_AND_DECIDE()` after the fix | The exact task body that failed twice now returns `{"status":"COMPLETED","alerts_processed":1,...}` |
+| `WORKFLOW_FULL_PIPELINE_V2('AUTO')` after the fix | Completed, 1 alert processed, AI decision `ESCALATE` with a stated reason, 15.4s |
+| Scheduled tasks | All 7 report `state = started`; `TASK_FRAUD_SCAN` verified to call `WORKFLOW_DETECT_AND_ACT(100)` with no `WHEN` condition |
+| Alert sentinel removed | `ALERT` and `CONFIDENCE_SCORE` now agree with `BL_DOC_ALERT`/`BL_DOC_CONFIDENCE` on every row in all three statuses: 0 mismatches (previously 7 rows stored the English string `'No anomalies detected'` instead of NULL) |
+| Translation key parity | 346 keys defined for EN, VN and JA with identical key sets; only `f_bl_id` is intentionally identical in all three (it is an identifier) |
+| Language conditionals in pages | 0 across `app.py` and all six pages, down from 38 (28 of which had no Japanese branch) |
+| Translation placeholder parity | 0 mismatches — every `{}` placeholder appears in all three languages of every key |
+| Undefined translation keys | 0 — every `t["..."]` reference in every page resolves |
+| Stage deployment integrity | All 9 deployed `.py` files verified by MD5 against the local repo after upload |
+| Judge grants after redeploying procedures | 101, unchanged — `PROCESS_BL_DOCUMENTS()` and `WORKFLOW_FULL_PIPELINE_V2(...)` re-granted after `CREATE OR REPLACE` silently dropped their `USAGE` |
 | Chat NULL handling | User turns and tabular answers store real SQL `NULL` for absent fields, verified no column contains the string `'None'` |
 | Chat session ids | Generated by `CHAT_SESSION_SEQ` only; the identity default was removed from `SESSION_ID` because Snowflake identity is not monotonic and `MAX(SESSION_ID)` could resolve to the wrong conversation |
 | Stage PDFs | 15 files restored to `@LOGISTICS_STAGE/bill_of_lading/` and registered |
@@ -432,10 +484,10 @@ Two issues were found and fixed during this audit:
 A third issue was found while adding chat persistence and is recorded here because it invalidated an earlier verification claim:
 - **Least-privilege tests were silently backed by ACCOUNTADMIN.** The developer account has `CURRENT_SECONDARY_ROLES() = ALL`, which includes `ACCOUNTADMIN`. `USE ROLE HACKATHON_JUDGE_ROLE` alone therefore does **not** produce a least-privilege session — privileges from secondary roles still apply, so a permission gap would go undetected. All judge-role verification was re-run with `USE SECONDARY ROLES NONE`. Under that stricter test the judge role behaved as intended, and the missing-grant case it exposed (`CHAT_MESSAGE` not directly readable) is the designed behaviour.
 
-**Note:** all 7 scheduled tasks are currently `suspended` (deliberate, to conserve trial credits). Resume them with:
+**Note:** all 7 scheduled tasks are now `started`, so the pipeline runs unattended. To conserve trial credits, suspend them with:
 ```sql
-ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN RESUME;
-ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN SUSPEND;
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL SUSPEND;
 -- etc. for TASK_COMPLIANCE_CHECK, TASK_AI_EXPLAIN_ANOMALY,
 --        TASK_NOTIFY_HIGH_FRAUD, TASK_GENERATE_WEEKLY_INSIGHTS, TASK_REFRESH_PDF_URLS
 ```

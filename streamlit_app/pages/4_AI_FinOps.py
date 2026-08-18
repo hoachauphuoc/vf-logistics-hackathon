@@ -69,25 +69,23 @@ try:
         st.success(f"✅ {t['cost_ok'].format(cost=today_cost, threshold=threshold_usd, calls=today_calls)}")
     
     if top_proc and top_proc[0]["CALLS"] > 0:
-        st.caption(f"{t['top_consumer']}: **{top_proc[0]['PROCEDURE_NAME']}** ({top_proc[0]['CALLS']} calls, {top_proc[0]['TOKENS']:,} tokens)")
+        st.caption(
+            f"{t['top_consumer']}: "
+            + t["top_consumer_detail"].format(
+                name=top_proc[0]['PROCEDURE_NAME'],
+                calls=top_proc[0]['CALLS'],
+                tokens=f"{top_proc[0]['TOKENS']:,}",
+            )
+        )
 except Exception as e:
-    st.error(f"⚠️ FinOps data unavailable: {str(e)[:100]}")
+    st.error(t["finops_unavailable"].format(err=str(e)[:100]))
     threshold_usd = 0.005
 
 st.divider()
 
 # Daily cost trend
 st.subheader(t["daily_cost"])
-st.caption(
-    "Token counts are the actual usage figures returned by Cortex with each call. "
-    "Cost is an **estimate**: real tokens x the per-model reference credit rate in AI_MODEL_RATE x USD per credit. "
-    "Authoritative billed consumption is SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
-    if st.session_state.lang == "EN" else
-    "Số token là số thật do Cortex trả về theo từng lệnh gọi. Chi phí là **ước lượng**: token thật x đơn giá credit theo model trong AI_MODEL_RATE x USD/credit. "
-    "Số liệu tính phí chính thức nằm ở SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY."
-    if st.session_state.lang == "VN" else
-    "トークン数はCortexが返す実測値です。コストは概算です（実トークン×AI_MODEL_RATEのモデル別クレジット単価×USD/クレジット）。"
-)
+st.caption(t["finops_cost_note"])
 try:
     cost_df = get_cost_trend()
     if len(cost_df) > 0:
@@ -143,7 +141,7 @@ try:
     m3.metric(t["total_tokens_page"], f"{int(global_metrics['TOTAL_TOKENS']):,}")
     m4.metric(t["success_rate"], f"{float(global_metrics['SUCCESS_RATE'] or 0):.1f}%")
 except Exception as e:
-    st.warning(f"⚠️ {str(e)[:100]}")
+    st.warning(t["generic_error"].format(err=str(e)[:100]))
     total_logs = 0
 
 if total_logs > 0:
@@ -165,11 +163,11 @@ if total_logs > 0:
         log_df.index.name = "#"
         ui.show_table(rename_columns(log_df, st.session_state.lang))
         try:
-            st.download_button("📥 Export AI Log CSV", log_df.to_csv(index=False), "ai_call_log.csv", "text/csv", key="log_csv")
+            st.download_button(t["export_ai_log"], log_df.to_csv(index=False), "ai_call_log.csv", "text/csv", key="log_csv")
         except:
             pass
     except Exception as e:
-        st.error(f"⚠️ {str(e)[:150]}")
+        st.error(t["generic_error"].format(err=str(e)[:150]))
 
 st.divider()
 
@@ -220,12 +218,12 @@ except Exception:
 st.divider()
 
 # AI Proactive Insights
-st.subheader("🧠 AI Proactive Insights")
-st.caption("AI analyzes 10K+ records and generates executive-level insights: risks, opportunities, trends, anomalies.")
+st.subheader(t["insights_header"])
+st.caption(t["insights_caption"])
 
 lang = st.session_state.get("lang", "EN")
-if st.button("🧠 Generate AI Insights" if lang == "EN" else "🧠 Tạo Insights AI" if lang == "VN" else "🧠 AIインサイト生成", type="primary"):
-    with st.spinner("AI analyzing 10,010 records for patterns..."):
+if st.button(t["generate_insights"], type="primary"):
+    with st.spinner(t["insights_spinner"]):
         try:
             import json
             result = session.sql(f"CALL AI_GENERATE_INSIGHTS('{lang}')").collect()[0][0]
@@ -242,15 +240,15 @@ if st.button("🧠 Generate AI Insights" if lang == "EN" else "🧠 Tạo Insigh
                             st.markdown(item.get("insight", ""))
                 else:
                     st.markdown(str(insights_raw)[:500])
-                st.caption(f"📊 Data: {data.get('data_summary', '')[:200]}")
+                st.caption(t["insights_data_label"].format(v=data.get('data_summary', '')[:200]))
             else:
-                st.warning(f"⚠️ {data.get('error', 'Unknown error')[:150]}")
+                st.warning(t["generic_error"].format(err=data.get('error', t["unknown_error"])[:150]))
         except Exception as e:
-            st.error(f"⚠️ Insights generation failed: {str(e)[:150]}")
+            st.error(t["insights_failed"].format(err=str(e)[:150]))
 
 st.divider()
 try:
     model_name = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]['CONFIG_VALUE']
 except:
     model_name = "llama3-8b"
-st.caption(f"Active Model: {model_name} | Cost Alert: ${threshold_usd:.3f}/day | ⚙️ Settings")
+st.caption(t["finops_footer"].format(model=model_name, cost=f"{threshold_usd:.3f}"))

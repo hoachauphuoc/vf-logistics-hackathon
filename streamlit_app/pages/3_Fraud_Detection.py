@@ -8,14 +8,7 @@ session = get_active_session()
 t = init_language()
 lang = st.session_state.lang
 
-ui.page_header(
-    t["fraud_center_title"],
-    "Calibrated detection → Cortex AI investigation → sanctions screening → autonomous action"
-    if lang == "EN" else
-    "Phát hiện theo phân vị → Cortex AI điều tra → sàng lọc cấm vận → hành động tự động"
-    if lang == "VN" else
-    "検知 → Cortex AI調査 → 制裁スクリーニング → 自律アクション"
-)
+ui.page_header(t["fraud_center_title"], t["fraud_pipeline_subtitle"])
 
 # KPIs
 try:
@@ -37,11 +30,7 @@ try:
         st.metric(t["medium_severity"], fraud_kpis["MED_SEV"])
     with k4:
         st.metric(t["total_open"], fraud_kpis["OPEN_ALERTS"])
-    ui.caption_scope(
-        "Across every alert ever raised in FRAUD_ALERT."
-        if lang == "EN" else
-        "Tính trên toàn bộ cảnh báo trong FRAUD_ALERT."
-    )
+    ui.caption_scope(t["scope_all_alerts"])
 except Exception as e:
     ui.load_error("Fraud KPIs", e)
 
@@ -106,7 +95,7 @@ with col3:
                         st.caption(t["reason_label"].format(v=reason))
                     sap_posting = parsed.get("sap_posting")
                     if isinstance(sap_posting, dict) and sap_posting.get("status") == "SUCCESS":
-                        st.caption(f"SAP posting: {sap_posting.get('sap_document', 'n/a')}")
+                        st.caption(t["sap_posting_label"].format(v=sap_posting.get('sap_document', t["not_available"])))
                     st.caption(t["execution_time_label"].format(ms=parsed.get('execution_time_ms', '?')))
                 except Exception:
                     st.success(t["pipeline_success"])
@@ -143,13 +132,7 @@ try:
         # These three counts come from the LIMIT 50 query above, not from the whole
         # table. Without saying so they sit directly beneath the all-time KPIs and
         # read as a contradiction ("460 alerts" above, "50 decisions" below).
-        ui.caption_scope(
-            f"Across the {len(decisions)} most recently AI-analysed alerts, not all time. "
-            "Run EVALUATE_AI_DECISIONS() for the full-population breakdown."
-            if lang == "EN" else
-            f"Tính trên {len(decisions)} cảnh báo được AI phân tích gần nhất, không phải toàn bộ. "
-            "Gọi EVALUATE_AI_DECISIONS() để xem toàn bộ."
-        )
+        ui.caption_scope(t["scope_recent_decisions"].format(n=len(decisions)))
 
         ui.show_table(decisions, height=320)
 
