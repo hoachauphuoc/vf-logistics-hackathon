@@ -39,7 +39,7 @@ Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowf
 
 Direct app link (after login): `https://app.snowflake.com/dpyxiqz-fn71223/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
 
-This account was **verified end-to-end under its own role** on 2026-08-18: it can read all 31 tables and 11 views, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, and write chat cost telemetry to `AI_CALL_LOG`. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
+This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 32 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
 
 > **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture** — it is not deployed and is not required to run the solution. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) now lives in the Streamlit app. The `mendix-integration/` folder is retained purely as reference for the JDBC key-pair auth pattern. See *Known Limitations* in Section 11 for the two UX trade-offs this consolidation introduced.
 
@@ -224,6 +224,9 @@ vf-logistics-hackathon/
 ├── sql/
 │   ├── workflows/
 │   │   ├── agent_skills_procedures.sql   Self-contained procedure DDLs
+│   │   ├── document_to_decision.sql      Ingest → extract → decide chain
+│   │   ├── hardened_objects.sql          Hardened tables/views, exported from GET_DDL
+│   │   ├── chat_persistence.sql          Chat history tables + 6 owner-rights procedures
 │   │   └── run_full_workflow_demo.sql    CLI demo script
 │   └── monitoring/
 │       └── CREDIT_MONITORING_GUIDE.md
@@ -356,10 +359,17 @@ After being shortlisted, 3 evaluator feedback items were addressed:
 - Pipeline can also be triggered from the AI Chat sidebar
 
 ### Fix 3: Redesigned Chat Interface with Session History Persistence
-- Rebuilt `6_AI_Chat.py` as a true conversational interface: full transcript re-rendered on every turn, with user and assistant turns visually distinguished
-- Chat history persists in `st.session_state.chat_messages` for the whole session, so context is retained across questions
+- Rebuilt `6_AI_Chat.py` as a true conversational interface: full transcript re-rendered on every turn, with user and assistant turns visually distinguished by avatar badge, name, timestamp, response latency, and result row count
+- **Conversations are persisted in Snowflake**, not just in memory: every turn is written to `CHAT_MESSAGE` and indexed by `CHAT_SESSION`, so a transcript survives a page reload, a browser restart, and an app restart
+- Sidebar **Conversations** panel with `➕ New chat` and a **History** list of the last 20 conversations; clicking one reloads its full transcript, including the result tables, which are restored from a stored JSON snapshot rather than by re-running the SQL (so no extra warehouse cost and no risk of showing different rows than were originally returned)
+- Conversations are **scoped per user** via `CURRENT_USER()` and guarded inside the procedures — one evaluator cannot read, append to, or delete another's conversations. Verified by test.
+- All persistence flows through six `EXECUTE AS OWNER` procedures (`CHAT_SESSION_NEW`, `CHAT_MESSAGE_SAVE`, `CHAT_SESSION_LIST`, `CHAT_SESSION_LOAD`, `CHAT_SESSION_DELETE`, `CHAT_SESSION_RENAME`), so a read-only evaluator role needs **no INSERT grant** and no direct access to the chat tables
+- Persistence degrades safely: if any chat-history call fails, the tab falls back to in-memory conversation and shows a one-line notice instead of erroring
+- Conversation titles are derived automatically from the first question asked
 - Intent classification routes each message either to a conversational answer or to generated SQL executed against the warehouse
-- Sidebar includes quick-question buttons, a **Run Full Pipeline** button, and **Clear Chat**
+- Generated SQL is restricted to an allowlist of 14 read-only tables and views, single-statement `SELECT`/`WITH` only, with an enforced `LIMIT`; a blocked query names the offending object
+- Tabular answers render via `st.dataframe`; every result exposes the generated SQL in an expander
+- Sidebar also includes quick-question buttons, a **Run Full Pipeline** button, **Export transcript**, and **Delete this conversation**
 - Every Cortex call is logged to `AI_CALL_LOG` for cost/usage attribution
 - Implemented with `st.text_input` + `st.markdown` rather than `st.chat_message`/`st.chat_input`, because the SiS runtime is Streamlit 1.22 (see *Known Limitations*)
 
@@ -372,7 +382,7 @@ These are platform constraints of the SiS runtime, not defects in the solution. 
 | SiS executes server-side, so `PUT file://<local path>` cannot reach the client filesystem | No path-based upload button | Same as above |
 | Sandbox blocks `<embed>`/`<iframe>` of external URLs | PDF cannot be previewed inline as it was in Mendix | `GET_PDF_URL` issues a fresh 1-hour presigned S3 URL as a download link |
 | Snowflake internal stages do not serve `Content-Type: application/pdf` | Browser downloads the PDF instead of rendering it in a tab | Accepted; link is labelled as a download |
-| `st.chat_message` / `st.chat_input` unavailable | Cannot use native chat widgets | Equivalent UX built from `st.text_input` + `st.markdown` with session-state history |
+| `st.chat_message` / `st.chat_input` unavailable | Cannot use native chat widgets | Equivalent UX built from `st.text_input` + `st.markdown`, with conversation history persisted in Snowflake rather than only in session state |
 
 Upload ergonomics are the one area where the native app is a step back from the removed Mendix portal. The trade-off was accepted deliberately: the whole system now runs inside Snowflake with no external runtime, server, Java action, or API credential to maintain. When the SiS runtime advances to 1.26+, in-app upload becomes a `st.file_uploader` call plus a `PUT` to the existing stage — no architectural change.
 
@@ -381,8 +391,8 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 
 | Check | Result |
 |---|---|
-| Tables / views | 31 / 11 — all 11 views queried successfully |
-| Procedures / functions | 46 / 6 |
+| Tables / views | 32 / 11 — all 11 views queried successfully |
+| Procedures / functions | 52 / 6 |
 | `BILL_OF_LADING` rows | 10,017 |
 | Cortex Search `BL_SEARCH_SERVICE` | ACTIVE (indexing + serving), 10,017 rows |
 | `PROCESS_BL_DOCUMENTS()` | Returns `{"processed":0,"errors":0,"synced":true}` — no unprocessed files, auto-sync confirmed |
@@ -390,11 +400,17 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | `WORKFLOW_FULL_PIPELINE_V2('AUTO')` | Completed, 1 alert processed, AI decision `CLEAR`, SAP posted, 15.1s |
 | `CHAT_WITH_DATA(...)` | Returns natural-language answer |
 | `GET_PDF_URL(402)` | Returns valid presigned URL |
+| Chat persistence round-trip | Session created, turns saved, listed, reloaded, deleted — verified under `HACKATHON_JUDGE_ROLE` with secondary roles disabled |
+| Chat cross-user isolation | Writing to, deleting, or loading another user's conversation all correctly refused |
+| Chat payload escaping | Result JSON containing single quotes and backslashes round-trips as valid JSON (bound parameters, not string interpolation) |
 | Stage PDFs | 15 files restored to `@LOGISTICS_STAGE/bill_of_lading/` and registered |
 
 Two issues were found and fixed during this audit:
 - **Stage PDFs were missing after account migration** — only CSV data had been restored, so `GET_PDF_URL` returned working URLs that resolved to S3 `NoSuchKey`. All 15 PDFs were re-uploaded and `ALTER STAGE ... REFRESH` was run.
 - **Stale presigned URLs were being served from cache** — `PDF_PRESIGNED_URL` held expired links from the previous account. The cache was cleared and the Documents page now always requests a fresh URL via `GET_PDF_URL`.
+
+A third issue was found while adding chat persistence and is recorded here because it invalidated an earlier verification claim:
+- **Least-privilege tests were silently backed by ACCOUNTADMIN.** The developer account has `CURRENT_SECONDARY_ROLES() = ALL`, which includes `ACCOUNTADMIN`. `USE ROLE HACKATHON_JUDGE_ROLE` alone therefore does **not** produce a least-privilege session — privileges from secondary roles still apply, so a permission gap would go undetected. All judge-role verification was re-run with `USE SECONDARY ROLES NONE`. Under that stricter test the judge role behaved as intended, and the missing-grant case it exposed (`CHAT_MESSAGE` not directly readable) is the designed behaviour.
 
 **Note:** all 7 scheduled tasks are currently `suspended` (deliberate, to conserve trial credits). Resume them with:
 ```sql
@@ -405,7 +421,7 @@ ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;
 ```
 
 ### Infrastructure
-- Migrated to new Snowflake trial account (`DPYXIQZ-FN71223`, expires 2026-09-04) with full schema, data, and all 46 procedures
+- Migrated to new Snowflake trial account (`DPYXIQZ-FN71223`, expires 2026-09-04) with full schema, data, and all 52 procedures
 - Added `environment.yml` to the Streamlit stage root to declare the `plotly` dependency (fixes `ModuleNotFoundError` on the dashboard)
 - Generated new RSA key pair for `MENDIX_SERVICE_USER` key-pair JWT authentication
 - Mendix integration code retained in `mendix-integration/` as **reference only** — it is not deployed, not the entry point, and not required to run the solution. It documents the JDBC key-pair auth pattern for reviewers who want to see how the original external portal authenticated.

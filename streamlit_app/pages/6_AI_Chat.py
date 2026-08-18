@@ -1,5 +1,8 @@
 import streamlit as st
 import time
+import json
+import datetime
+import pandas as pd
 from snowflake.snowpark.context import get_active_session
 
 st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
@@ -10,20 +13,62 @@ if "lang" not in st.session_state:
 lang = st.session_state.lang
 
 TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Tro ly AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
-CAPTIONS = {"EN": "Ask about shipments, compliance, fraud — powered by Cortex AI", "VN": "Hoi ve lo hang, tuan thu, gian lan — Cortex AI", "JA": "出荷・コンプライアンス・不正について質問 — Cortex AI"}
-THINKING = {"EN": "Thinking...", "VN": "Dang suy nghi...", "JA": "考えています..."}
+CAPTIONS = {
+    "EN": "Ask about shipments, carriers, compliance, fraud, or ERP postings — grounded in live Snowflake data",
+    "VN": "Hoi ve lo hang, hang tau, tuan thu, gian lan — du lieu truc tiep tu Snowflake",
+    "JA": "出荷・船社・コンプライアンス・不正について質問 — Snowflakeのライブデータに基づく",
+}
+THINKING = {"EN": "Analyzing your question...", "VN": "Dang phan tich cau hoi...", "JA": "質問を分析しています..."}
+LBL_YOU = {"EN": "You", "VN": "Ban", "JA": "あなた"}
+LBL_AI = {"EN": "AI Assistant", "VN": "Tro ly AI", "JA": "AIアシスタント"}
+
+# --- Styling: professional chat bubbles ---
+st.markdown("""
+<style>
+.chat-meta {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.78rem; color: #9aa4b2; margin: 0 0 2px 0;
+}
+.chat-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    font-size: 0.72rem; font-weight: 700; color: #fff; flex: 0 0 22px;
+}
+.badge-user { background: #2f6feb; }
+.badge-ai   { background: #1f9d6b; }
+.chat-name  { font-weight: 600; color: #c9d1d9; }
+.chat-time  { color: #6e7681; }
+.chat-pill {
+    background: #21262d; color: #9aa4b2; border: 1px solid #30363d;
+    border-radius: 10px; padding: 0 6px; font-size: 0.7rem;
+}
+.chat-row { border-left: 2px solid #30363d; padding: 2px 0 2px 12px; margin-bottom: 4px; }
+.chat-row-user { border-left-color: #2f6feb; }
+.chat-row-ai   { border-left-color: #1f9d6b; }
+</style>
+""", unsafe_allow_html=True)
 
 st.title(TITLES[lang])
 st.caption(CAPTIONS[lang])
 
 try:
-    ai_model = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]["CONFIG_VALUE"]
+    ai_model = session.sql(
+        "SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'"
+    ).collect()[0]["CONFIG_VALUE"]
 except Exception:
     ai_model = "mistral-large2"
 
-# Session state for chat persistence
+# Session state
 if "chat_messages" not in st.session_state:
     st.session_state.chat_messages = []
+if "input_key" not in st.session_state:
+    st.session_state.input_key = 0
+if "session_id" not in st.session_state:
+    st.session_state.session_id = None
+if "persist_error" not in st.session_state:
+    st.session_state.persist_error = None
+if "sessions_cache" not in st.session_state:
+    st.session_state.sessions_cache = None
 
 
 def safe_rerun():
@@ -31,6 +76,116 @@ def safe_rerun():
         st.rerun()
     elif hasattr(st, "experimental_rerun"):
         st.experimental_rerun()
+
+
+def now_hm():
+    return datetime.datetime.now().strftime("%H:%M:%S")
+
+
+# ---------- Conversation persistence ----------
+# Every write goes through an EXECUTE AS OWNER procedure, so read-only roles
+# (e.g. HACKATHON_JUDGE_ROLE) need no INSERT grant on CHAT_MESSAGE.
+# Any failure here degrades to in-memory-only chat rather than breaking the tab.
+MAX_PERSISTED_ROWS = 20
+
+
+def db_new_session():
+    try:
+        sid = session.sql(
+            "CALL CHAT_SESSION_NEW(?)", params=[lang]
+        ).collect()[0][0]
+        st.session_state.persist_error = None
+        return int(sid)
+    except Exception as e:
+        st.session_state.persist_error = str(e)[:150]
+        return None
+
+
+def db_save(role, content=None, sql_text=None, df=None, rows=None, latency_ms=None):
+    sid = st.session_state.get("session_id")
+    if not sid:
+        return
+    result_json = None
+    if df is not None:
+        try:
+            result_json = df.head(MAX_PERSISTED_ROWS).to_json(
+                orient="records", date_format="iso"
+            )
+        except Exception:
+            result_json = None
+    try:
+        # Bound parameters, not string interpolation: RESULT_JSON legitimately
+        # contains quotes and backslashes that would break a literal.
+        session.sql(
+            "CALL CHAT_MESSAGE_SAVE(?, ?, ?, ?, ?, ?, ?)",
+            params=[
+                int(sid), role, content, sql_text, result_json,
+                None if rows is None else int(rows),
+                None if latency_ms is None else int(latency_ms),
+            ],
+        ).collect()
+    except Exception as e:
+        st.session_state.persist_error = str(e)[:150]
+
+
+def db_list_sessions():
+    """Cached in session_state so we do not re-query on every Streamlit rerun."""
+    if st.session_state.sessions_cache is not None:
+        return st.session_state.sessions_cache
+    try:
+        rows = session.sql("CALL CHAT_SESSION_LIST()").collect()
+        st.session_state.sessions_cache = [r.as_dict() for r in rows]
+    except Exception as e:
+        st.session_state.persist_error = str(e)[:150]
+        st.session_state.sessions_cache = []
+    return st.session_state.sessions_cache
+
+
+def invalidate_sessions():
+    st.session_state.sessions_cache = None
+
+
+def db_load_session(sid):
+    try:
+        rows = session.sql(
+            "CALL CHAT_SESSION_LOAD(?)", params=[int(sid)]
+        ).collect()
+    except Exception as e:
+        st.session_state.persist_error = str(e)[:150]
+        return None
+    msgs = []
+    for r in rows:
+        d = r.as_dict()
+        df = None
+        if d.get("RESULT_JSON"):
+            try:
+                df = pd.DataFrame(json.loads(d["RESULT_JSON"]))
+            except Exception:
+                df = None
+        created = d.get("CREATED_AT")
+        msgs.append({
+            "role": d.get("ROLE"),
+            "content": d.get("CONTENT"),
+            "sql": d.get("SQL_TEXT"),
+            "df": df,
+            "rows": d.get("ROW_COUNT"),
+            "ts": created.strftime("%H:%M:%S") if created else "",
+            "latency_ms": d.get("LATENCY_MS"),
+        })
+    return msgs
+
+
+def db_delete_session(sid):
+    try:
+        session.sql("CALL CHAT_SESSION_DELETE(?)", params=[int(sid)]).collect()
+    except Exception as e:
+        st.session_state.persist_error = str(e)[:150]
+
+
+def ensure_session():
+    if not st.session_state.get("session_id"):
+        st.session_state.session_id = db_new_session()
+        invalidate_sessions()
 
 
 def cortex_chat(prompt, context="chat"):
@@ -62,171 +217,326 @@ def cortex_chat(prompt, context="chat"):
             pass
 
 
+# Read-only tables/views the assistant may query
+ALLOWED_OBJECTS = {
+    "BILL_OF_LADING", "BILL_OF_LADING_EXTRACTED", "FRAUD_ALERT",
+    "SAP_FI_DOCUMENT", "COMPLIANCE_CHECK_RESULT", "PORT_MASTER",
+    "VESSEL_REGISTRY", "HS_CODE_REFERENCE", "WORKFLOW_AUDIT_LOG",
+    "V_AI_DECISIONS", "V_EXCHANGE_RATES", "V_EXPORT_RESTRICTED_ENTITIES",
+    "V_AI_DAILY_COST", "V_AI_USAGE_SUMMARY",
+}
+
+SCHEMA_HINT = (
+    "Available objects in MENDIX_APP.AGENTS (read-only):\n"
+    "- BILL_OF_LADING (BL_ID, BL_NUMBER, CARRIER_NAME, VESSEL_NAME, PORT_OF_LOADING_LOCODE, "
+    "PORT_OF_DISCHARGE_LOCODE, ETD, ETA, CONTAINER_NUMBER, COMMODITY_DESCRIPTION, "
+    "GROSS_WEIGHT_KGS, TOTAL_CHARGES, STATUS, PAYMENT_STATUS, SHIPPER_NAME, CONSIGNEE_NAME, CREATED_AT)\n"
+    "- BILL_OF_LADING_EXTRACTED (DOC_ID, FILE_NAME, BL_NUMBER, CONTAINER_NUMBER, VESSEL_NAME, "
+    "GROSS_WEIGHT_KG, CONFIDENCE_SCORE, STATUS, FINAL_STATUS, ANOMALY_FLAGS, ALERT, PROCESSED_AT)\n"
+    "- FRAUD_ALERT (ALERT_ID, BL_ID, ALERT_TYPE, SEVERITY, DESCRIPTION, STATUS, DETECTED_AT, "
+    "CREATED_AT, RESOLVED_AT, AI_RISK_ASSESSMENT, AI_RECOMMENDED_ACTION, AI_DECISION_REASON)\n"
+    "- SAP_FI_DOCUMENT (FI_DOC_ID, BL_ID, SAP_DOCUMENT_NUMBER, COMPANY_CODE, FISCAL_YEAR, "
+    "POSTING_DATE, DOCUMENT_TYPE, REFERENCE, CURRENCY_CODE, TOTAL_AMOUNT, CREATED_AT)\n"
+    "- COMPLIANCE_CHECK_RESULT (CHECK_ID, BL_ID, CHECK_TIMESTAMP, COMPLIANT, VIOLATIONS, "
+    "RISK_SCORE, RULES_CHECKED)\n"
+    "- PORT_MASTER (PORT_CODE, PORT_NAME, COUNTRY, COUNTRY_CODE, PORT_TYPE, IS_ACTIVE)\n"
+    "- VESSEL_REGISTRY (VESSEL_ID, VESSEL_NAME, IMO_NUMBER, FLAG, GROSS_TONNAGE, BUILT_YEAR, "
+    "VESSEL_TYPE, OPERATOR_NAME, IS_ACTIVE)\n"
+    "- HS_CODE_REFERENCE (HS_CODE, DESCRIPTION, CATEGORY, IS_DANGEROUS_GOODS, IS_RESTRICTED, "
+    "REQUIRES_PERMIT, DUTY_RATE_PCT, DG_CLASS)\n"
+    "- WORKFLOW_AUDIT_LOG (AUDIT_ID, WORKFLOW_NAME, STEP_NAME, STEP_ORDER, EXECUTION_TIME_MS, "
+    "STATUS, EXECUTED_BY, EXECUTED_AT)\n"
+    "- V_AI_DECISIONS (ALERT_ID, SEVERITY, ALERT_TYPE, BL_NUMBER, SHIPPER_NAME, CONSIGNEE_NAME, "
+    "TOTAL_CHARGES, ROUTE, AI_DECISION, AI_DECISION_REASON, ALERT_STATUS, DETECTED_AT)\n"
+    "- V_EXCHANGE_RATES (QUOTE_CURRENCY_ID, EXCHANGE_RATE, RATE_DATE)\n"
+    "- V_EXPORT_RESTRICTED_ENTITIES (ENTITY_NAME, COUNTRY, LIST_TYPE, EFFECTIVE_DATE)\n"
+    "- V_AI_DAILY_COST (DAY, TOTAL_CALLS, TOTAL_TOKENS, AVG_LATENCY_MS, ESTIMATED_COST_USD, ERRORS)\n"
+    "- V_AI_USAGE_SUMMARY (PROCEDURE_NAME, CALL_COUNT, TOTAL_TOKENS, AVG_LATENCY_MS, ERROR_RATE_PCT)\n"
+    "Note: BILL_OF_LADING joins FRAUD_ALERT / SAP_FI_DOCUMENT / COMPLIANCE_CHECK_RESULT on BL_ID, "
+    "and PORT_MASTER.PORT_CODE = BILL_OF_LADING.PORT_OF_LOADING_LOCODE.\n"
+)
+
+
 def generate_response(question):
+    """Returns (answer_markdown, sql, dataframe_or_None, rowcount_or_None)."""
     try:
         classify_prompt = (
-            "Classify this message as DATA_QUERY (needs SQL about shipments/carriers/ports/fraud) "
-            "or CONVERSATION (greeting, chitchat, help). Return ONLY one word. Message: " + question
+            "Classify this message as DATA_QUERY (needs SQL about shipments/carriers/ports/fraud/"
+            "compliance/SAP/costs) or CONVERSATION (greeting, chitchat, help). "
+            "Return ONLY one word. Message: " + question
         )
         msg_type = cortex_chat(classify_prompt, "classify_intent").strip().upper()
 
         if "CONVERSATION" in msg_type or "DATA" not in msg_type:
             chat_prompt = (
                 "You are VF Logistics AI Assistant - a maritime shipping intelligence system. "
-                "You can help with: shipment tracking, carrier analytics, fraud detection, compliance, exchange rates. "
+                "You can help with: shipment tracking, carrier analytics, fraud detection, "
+                "compliance screening, SAP postings, FX rates, and AI cost monitoring. "
                 "Answer in the SAME LANGUAGE the user uses. Be friendly, concise, and helpful.\n\n"
                 f"User: {question}"
             )
-            return cortex_chat(chat_prompt, "conversation"), None
+            return cortex_chat(chat_prompt, "conversation"), None, None, None
 
         sql_prompt = (
             "You are a SQL expert for maritime logistics on Snowflake. "
-            "Write a SELECT query to answer this question. Available tables:\n"
-            "- MENDIX_APP.AGENTS.BILL_OF_LADING (BL_ID, BL_NUMBER, CARRIER_NAME, VESSEL_NAME, "
-            "PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE, ETD, ETA, CONTAINER_NUMBER, "
-            "COMMODITY_DESCRIPTION, GROSS_WEIGHT_KGS, TOTAL_CHARGES, STATUS, PAYMENT_STATUS, "
-            "SHIPPER_NAME, CONSIGNEE_NAME, CREATED_AT)\n"
-            "- MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_ID, BL_ID, ALERT_TYPE, SEVERITY, DESCRIPTION, STATUS, DETECTED_AT)\n"
-            "Return ONLY the SQL query, no explanation. Add LIMIT 20 for list queries.\n"
+            "Write ONE SELECT query to answer the question.\n"
+            + SCHEMA_HINT
+            + "Rules: return ONLY the SQL, no explanation, no semicolon. "
+            "Add LIMIT 20 for list queries. Use fully qualified names.\n"
             f"Question: {question}"
         )
-        sql_result = cortex_chat(sql_prompt, "text_to_sql")
-        sql = sql_result.strip()
+        sql = cortex_chat(sql_prompt, "text_to_sql").strip()
+
         if "```" in sql:
             parts = sql.split("```")
             if len(parts) >= 2:
                 sql = parts[1]
-                if sql.startswith("sql"):
+                if sql.lower().startswith("sql"):
                     sql = sql[3:]
                 sql = sql.strip()
 
         sql_upper = sql.upper().strip()
-        if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
+        if not (sql_upper.startswith("SELECT") or sql_upper.startswith("WITH")):
             fallback = f"Answer this maritime logistics question briefly: {question}"
-            return cortex_chat(fallback, "not_select_fallback"), None
+            return cortex_chat(fallback, "not_select_fallback"), None, None, None
 
         if ";" in sql.rstrip(";"):
-            return "I can only run a single SELECT statement for safety.", None
+            return "For safety I only run a single SELECT statement.", None, None, None
 
         import re
-        allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
         referenced = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
-        table_names = {t2.split(".")[-1] for t2 in referenced}
-        if not table_names or not table_names.issubset(allowed_tables):
-            return "I can only query BILL_OF_LADING and FRAUD_ALERT for safety.", None
+        names = {t.split(".")[-1] for t in referenced}
+        if not names or not names.issubset(ALLOWED_OBJECTS):
+            blocked = ", ".join(sorted(names - ALLOWED_OBJECTS)) or "unknown"
+            return (
+                f"I can only query approved read-only objects. Blocked: `{blocked}`.",
+                None, None, None,
+            )
 
         if "LIMIT" not in sql_upper:
             sql = sql.rstrip(";") + " LIMIT 20"
 
-        data = session.sql(sql).collect()
-        if not data:
-            return "No results found.", sql
+        pdf = session.sql(sql).to_pandas()
+        if pdf.empty:
+            return "No rows matched that query.", sql, None, 0
 
-        if len(data) == 1 and len(data[0].as_dict()) <= 3:
-            row = data[0].as_dict()
-            answer = " | ".join(f"**{k}**: {v}" for k, v in row.items())
-        else:
-            cols = list(data[0].as_dict().keys())
-            answer = f"Found **{len(data)}** result(s):\n\n"
-            answer += "| " + " | ".join(cols) + " |\n"
-            answer += "| " + " | ".join(["---"] * len(cols)) + " |\n"
-            for row in data[:10]:
-                vals = [str(v)[:30] if v is not None else "-" for v in row.as_dict().values()]
-                answer += "| " + " | ".join(vals) + " |\n"
-            if len(data) > 10:
-                answer += f"\n*...and {len(data) - 10} more rows*"
+        # Single scalar / tiny result -> render as metric-style text
+        if pdf.shape[0] == 1 and pdf.shape[1] <= 3:
+            row = pdf.iloc[0].to_dict()
+            answer = "  ".join(f"**{k}:** {v}" for k, v in row.items())
+            return answer, sql, None, 1
 
-        return answer, sql
+        return None, sql, pdf, int(pdf.shape[0])
 
     except Exception as e:
         err = str(e)
         if "SQL compilation" in err:
             try:
                 fallback = f"Answer this maritime logistics question briefly: {question}"
-                return cortex_chat(fallback, "sql_error_fallback"), None
+                return cortex_chat(fallback, "sql_error_fallback"), None, None, None
             except Exception as e2:
-                return f"Error: {str(e2)[:150]}", None
-        return f"Error: {err[:150]}", None
+                return f"Error: {str(e2)[:150]}", None, None, None
+        return f"Error: {err[:150]}", None, None, None
+
+
+def ask(question):
+    ensure_session()
+    st.session_state.chat_messages.append(
+        {"role": "user", "content": question, "ts": now_hm()}
+    )
+    db_save("user", content=question)
+    t0 = time.time()
+    with st.spinner(THINKING[lang]):
+        answer, sql, pdf, rows = generate_response(question)
+    latency = int((time.time() - t0) * 1000)
+    st.session_state.chat_messages.append({
+        "role": "assistant",
+        "content": answer,
+        "sql": sql,
+        "df": pdf,
+        "rows": rows,
+        "ts": now_hm(),
+        "latency_ms": latency,
+    })
+    db_save("assistant", content=answer, sql_text=sql, df=pdf,
+            rows=rows, latency_ms=latency)
+    invalidate_sessions()   # message count / title may have changed
 
 
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown(f"**Model:** `{ai_model}`")
-    st.markdown(f"**Messages:** {len(st.session_state.chat_messages)}")
+    turns = sum(1 for m in st.session_state.chat_messages if m["role"] == "user")
+    lat = [m["latency_ms"] for m in st.session_state.chat_messages
+           if m["role"] == "assistant" and m.get("latency_ms")]
+    avg_lat = int(sum(lat) / len(lat)) if lat else 0
+
+    st.markdown("**Session**" if lang == "EN" else "**Phien**")
+    m1, m2 = st.columns(2)
+    m1.metric("Turns", turns)
+    m2.metric("Avg", f"{avg_lat/1000:.1f}s" if avg_lat else "—")
+    st.caption(f"Model: `{ai_model}`")
+    st.markdown("---")
+
+    # --- Conversations (persisted in Snowflake) ---
+    st.markdown("**Conversations**" if lang == "EN" else "**Hoi thoai**")
+    if st.button("➕ New chat" if lang == "EN" else "➕ Hoi thoai moi",
+                 key="new_chat", use_container_width=True):
+        st.session_state.chat_messages = []
+        st.session_state.session_id = None   # created lazily on first message
+        st.session_state.input_key += 1
+        invalidate_sessions()
+        safe_rerun()
+
+    past = db_list_sessions()
+    if past:
+        label = f"History ({len(past)})" if lang == "EN" else f"Lich su ({len(past)})"
+        with st.expander(label, expanded=False):
+            for s in past:
+                sid = int(s["SESSION_ID"])
+                title = str(s.get("TITLE") or "Untitled")[:36]
+                mark = " ●" if sid == st.session_state.get("session_id") else ""
+                if st.button(f"{title}{mark}", key=f"sess_{sid}", use_container_width=True):
+                    loaded = db_load_session(sid)
+                    if loaded is not None:
+                        st.session_state.chat_messages = loaded
+                        st.session_state.session_id = sid
+                        st.session_state.input_key += 1
+                        safe_rerun()
+                started = s.get("SESSION_START")
+                when = started.strftime("%d %b %H:%M") if started else ""
+                st.caption(f"{int(s.get('MESSAGE_COUNT') or 0)} msgs · {when}")
+
+    if st.session_state.get("persist_error"):
+        st.caption("⚠️ History unavailable — chat still works in this session.")
+
     st.markdown("---")
 
     st.markdown("**Quick Questions**" if lang == "EN" else "**Cau hoi nhanh**")
     quick_qs = {
-        "EN": ["How many shipments are pending?", "Top 5 carriers by revenue", "Show high severity alerts", "Total weight this month"],
-        "VN": ["Bao nhieu lo hang dang cho?", "Top 5 hang tau theo doanh thu", "Hien canh bao muc cao", "Tong trong luong thang nay"],
-        "JA": ["承認待ちの出荷数は？", "収益トップ5船社", "重大アラートを表示", "今月の総重量"]
+        "EN": ["How many shipments are pending?", "Top 5 carriers by revenue",
+               "Show high severity alerts", "Recent SAP postings",
+               "AI decisions by outcome"],
+        "VN": ["Bao nhieu lo hang dang cho?", "Top 5 hang tau theo doanh thu",
+               "Hien canh bao muc cao", "Cac but toan SAP gan day",
+               "Quyet dinh AI theo ket qua"],
+        "JA": ["承認待ちの出荷数は？", "収益トップ5船社", "重大アラートを表示",
+               "最近のSAP転記", "AI判定の内訳"],
     }
-    for q in quick_qs.get(lang, quick_qs["EN"]):
-        if st.button(q, key=f"qq_{hash(q)}", use_container_width=True):
-            st.session_state.chat_messages.append({"role": "user", "content": q})
-            with st.spinner(THINKING[lang]):
-                answer, sql = generate_response(q)
-            st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})
+    for i, q in enumerate(quick_qs.get(lang, quick_qs["EN"])):
+        if st.button(q, key=f"qq_{i}", use_container_width=True):
+            ask(q)
             safe_rerun()
 
     st.markdown("---")
     st.markdown("**Pipeline**")
-    if st.button("Run Full Pipeline", key="sidebar_pipeline", use_container_width=True):
-        with st.spinner("Running pipeline..."):
+    if st.button("⚡ Run Full Pipeline", key="sidebar_pipeline", use_container_width=True):
+        ensure_session()
+        t0 = time.time()
+        with st.spinner("Detect → Investigate → Screen → Remediate → SAP post..."):
             try:
                 result = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
-                st.session_state.chat_messages.append({
-                    "role": "assistant",
-                    "content": f"Pipeline completed:\n```\n{result}\n```",
-                    "sql": None
-                })
+                content = f"**Pipeline completed.**\n```json\n{result}\n```"
             except Exception as e:
-                st.session_state.chat_messages.append({
-                    "role": "assistant",
-                    "content": f"Pipeline error: {str(e)[:200]}",
-                    "sql": None
-                })
+                content = f"**Pipeline error:** {str(e)[:200]}"
+        latency = int((time.time() - t0) * 1000)
+        st.session_state.chat_messages.append({
+            "role": "assistant", "content": content, "sql": None, "df": None,
+            "rows": None, "ts": now_hm(), "latency_ms": latency,
+        })
+        db_save("assistant", content=content, latency_ms=latency)
+        invalidate_sessions()
         safe_rerun()
 
-    if st.button("Clear Chat" if lang == "EN" else "Xoa hoi thoai", key="clear_chat", use_container_width=True):
-        st.session_state.chat_messages = []
-        safe_rerun()
-
-# --- Chat Display (compatible with Streamlit 1.22) ---
-for msg in st.session_state.chat_messages:
-    if msg["role"] == "user":
-        st.markdown(f"**🧑 You:** {msg['content']}")
-    else:
-        st.markdown(f"**🤖 Assistant:** {msg['content']}")
-        if msg.get("sql"):
-            with st.expander("SQL Generated"):
-                st.code(msg["sql"], language="sql")
     st.markdown("---")
+    if st.session_state.chat_messages:
+        transcript = "\n\n".join(
+            f"[{m.get('ts','')}] {'USER' if m['role']=='user' else 'ASSISTANT'}: "
+            f"{m.get('content') or ('<' + str(m.get('rows',0)) + ' rows>')}"
+            + (f"\nSQL: {m['sql']}" if m.get("sql") else "")
+            for m in st.session_state.chat_messages
+        )
+        st.download_button(
+            "⬇️ Export transcript",
+            data=transcript,
+            file_name=f"vf_chat_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
 
-# Welcome message
+    if st.button("🗑️ Delete this conversation" if lang == "EN" else "🗑️ Xoa hoi thoai nay",
+                 key="delete_chat", use_container_width=True):
+        sid = st.session_state.get("session_id")
+        if sid:
+            db_delete_session(sid)
+        st.session_state.chat_messages = []
+        st.session_state.session_id = None
+        st.session_state.input_key += 1
+        invalidate_sessions()
+        safe_rerun()
+
+
+# --- Chat transcript ---
 if not st.session_state.chat_messages:
     st.info(
-        "Ask me anything about your logistics data! Try the quick questions in the sidebar, or type below."
+        "Ask anything about your logistics data — try a quick question in the sidebar, "
+        "or type below. Answers are generated from live Snowflake data, and the SQL used "
+        "is shown for every result."
         if lang == "EN" else
-        "Hoi toi bat cu dieu gi ve du lieu logistics! Thu cac cau hoi nhanh o sidebar, hoac nhap ben duoi."
+        "Hoi bat cu dieu gi ve du lieu logistics — thu cau hoi nhanh o sidebar hoac nhap ben duoi. "
+        "Cau tra loi lay tu du lieu Snowflake truc tiep, kem SQL da dung."
     )
 
-# --- Chat Input (text_input + button for Streamlit 1.22 compatibility) ---
+for msg in st.session_state.chat_messages:
+    is_user = msg["role"] == "user"
+    badge = "U" if is_user else "AI"
+    badge_cls = "badge-user" if is_user else "badge-ai"
+    row_cls = "chat-row-user" if is_user else "chat-row-ai"
+    name = LBL_YOU[lang] if is_user else LBL_AI[lang]
+
+    pills = ""
+    if not is_user:
+        if msg.get("latency_ms"):
+            pills += f"<span class='chat-pill'>{msg['latency_ms']/1000:.1f}s</span>"
+        if msg.get("rows") is not None:
+            pills += f"<span class='chat-pill'>{msg['rows']} rows</span>"
+
+    st.markdown(
+        f"<div class='chat-row {row_cls}'>"
+        f"<div class='chat-meta'>"
+        f"<span class='chat-badge {badge_cls}'>{badge}</span>"
+        f"<span class='chat-name'>{name}</span>"
+        f"<span class='chat-time'>{msg.get('ts','')}</span>{pills}"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # Content rendered outside the HTML block so markdown tables/code still work
+    if msg.get("content"):
+        st.markdown(msg["content"])
+    if msg.get("df") is not None:
+        st.dataframe(msg["df"], use_container_width=True)
+    if msg.get("sql"):
+        with st.expander("🔎 View generated SQL" if lang == "EN" else "🔎 Xem SQL"):
+            st.code(msg["sql"], language="sql")
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+
+# --- Input ---
 st.markdown("---")
-col1, col2 = st.columns([5, 1])
+col1, col2 = st.columns([6, 1])
 with col1:
     user_input = st.text_input(
         "Ask a question" if lang == "EN" else "Dat cau hoi",
-        placeholder="e.g. How many shipments are pending?" if lang == "EN" else "VD: Bao nhieu lo hang dang cho?",
-        key="chat_input",
-        label_visibility="collapsed"
+        placeholder="e.g. Which carrier has the highest total charges?" if lang == "EN"
+        else "VD: Hang tau nao co tong phi cao nhat?",
+        key=f"chat_input_{st.session_state.input_key}",
+        label_visibility="collapsed",
     )
 with col2:
     send_clicked = st.button("Send 📨" if lang == "EN" else "Gui 📨", use_container_width=True)
 
 if send_clicked and user_input:
-    st.session_state.chat_messages.append({"role": "user", "content": user_input})
-    with st.spinner(THINKING[lang]):
-        answer, sql = generate_response(user_input)
-    st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})
+    ask(user_input)
+    st.session_state.input_key += 1   # fresh widget -> input clears
     safe_rerun()
