@@ -23,7 +23,23 @@ Important notes for judges:
 - The **entry point** is the Streamlit dashboard running inside Snowflake (account `DPYXIQZ-FN71223`)
 - The **autonomous workflow execution** (Fraud Detection → AI Investigation → Sanctions Screening → Remediation) can be triggered from the Fraud Detection page or the AI Chat sidebar
 - Every detection, AI decision, audit log entry, and ERP post is made inside Snowflake — no external runtime
-- **Reviewer access**: a read-only role `HACKATHON_JUDGE_ROLE` is available; contact the team for credentials
+
+### Reviewer access
+
+Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowflake login — there is no anonymous public URL. A dedicated evaluator account is provisioned:
+
+| Field | Value |
+|---|---|
+| Login URL | https://app.snowflake.com |
+| Account | `DPYXIQZ-FN71223` |
+| User | `HACKATHON_JUDGE` |
+| Password | `SnowHack2026!` |
+| Role | `HACKATHON_JUDGE_ROLE` (applied automatically) |
+| App | Projects → Streamlit → **VF Logistics Dashboard** |
+
+Direct app link (after login): `https://app.snowflake.com/dpyxiqz-fn71223/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
+
+This account was **verified end-to-end under its own role** on 2026-08-18: it can read all 31 tables and 11 views, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, and write chat cost telemetry to `AI_CALL_LOG`. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
 
 > **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture** — it is not deployed and is not required to run the solution. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) now lives in the Streamlit app. The `mendix-integration/` folder is retained purely as reference for the JDBC key-pair auth pattern. See *Known Limitations* in Section 11 for the two UX trade-offs this consolidation introduced.
 
@@ -289,7 +305,7 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 
 ## 9. Key Differentiators
 
-1. **The AI actually decides, the decision is auditable, and the decision quality is measured** — `WORKFLOW_INVESTIGATE_ANOMALY` builds a quantitative evidence pack (cost-per-kg vs. the peer median across 10,000+ shipments, plus a sanctions-list match count queried from Marketplace data), applies an explicit BLOCK / ESCALATE / CLEAR rubric via Cortex AI, and **persists both the decision and its one-line reason** to `FRAUD_ALERT`. The orchestrator executes *that* decision — the action is not hardcoded. Measured outcome across **345 decisions** (as of 2026-08-17): `BLOCK 43 / ESCALATE 42 / CLEAR 260` — genuinely differentiated, not a uniform fallback. Verify with `CALL MENDIX_APP.AGENTS.EVALUATE_AI_DECISIONS();`
+1. **The AI actually decides, the decision is auditable, and the decision quality is measured** — `WORKFLOW_INVESTIGATE_ANOMALY` builds a quantitative evidence pack (cost-per-kg vs. the peer median across 10,000+ shipments, plus a sanctions-list match count queried from Marketplace data), applies an explicit BLOCK / ESCALATE / CLEAR rubric via Cortex AI, and **persists both the decision and its one-line reason** to `FRAUD_ALERT`. The orchestrator executes *that* decision — the action is not hardcoded. Measured outcome across **348 decisions** (as of 2026-08-18): `BLOCK 43 / ESCALATE 42 / CLEAR 263` — genuinely differentiated, not a uniform fallback. Verify with `CALL MENDIX_APP.AGENTS.EVALUATE_AI_DECISIONS();`
 2. **Decision quality is measured, not asserted** — `V_AI_DECISION_EVAL` recomputes, in SQL, the decision the documented rubric mandates for the same evidence and compares it to what the model actually decided. Current result: **95.9% policy adherence with 0 critical false negatives** (nothing that should have been blocked was cleared) over the **341** decisions the evaluator can score. That is 4 fewer than the 345 above, and the reason is stated rather than hidden: the evaluator joins each alert back to its shipment row to recompute cost-per-kg, and 4 historical alerts point at shipment rows that were removed during a demo-data cleanup, so they have no evidence pack left to re-score. This measurement also captured a concrete engineering win: moving the numeric threshold comparison out of the prompt and into SQL raised adherence from **78.5% to 100%** on the decisions taken after the change, because language models are unreliable at threshold arithmetic while being good at contextual judgement.
 3. **Calibrated detection instead of magic numbers** — thresholds are derived from the live data distribution (99th percentile of charges and weight, multiples of the peer median cost-per-kg). The previous hardcoded `> $50,000` rule matched only 15 of 10,025 shipments while a `> 30,000 kg` rule matched 24.5% of them; both are now percentile-based and graded by severity. Detection also applies **backpressure** — it stops creating alerts when the open triage queue is saturated rather than piling on work nobody can process.
 4. **Autonomous multi-step reasoning** — Detect → Investigate (Cortex AI) → Screen (Marketplace-sourced screening data) → Remediate → ERP post, chained without human intervention, and **batched**: one call can work through many alerts (`CALL WORKFLOW_FULL_PIPELINE_V2('AUTO', 10)`), across both HIGH and MEDIUM severity so no tier is abandoned in the queue.
