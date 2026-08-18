@@ -89,15 +89,36 @@ def now_hm():
 MAX_PERSISTED_ROWS = 20
 
 
+def _call(proc, args):
+    """CALL a procedure, passing NULL as a literal instead of a bound None.
+
+    The connector bundled with the SiS runtime converts a bound Python None into
+    the *string* 'None'. On a NUMBER parameter that raises
+    "Numeric value 'None' is not recognized"; on a VARCHAR parameter it is
+    accepted silently and stores the text 'None', which is worse. So None is
+    emitted as a SQL NULL literal and only real values are bound, which keeps
+    quote/backslash escaping safe for the text and JSON arguments.
+    """
+    slots, params = [], []
+    for a in args:
+        if a is None:
+            slots.append("NULL")
+        else:
+            slots.append("?")
+            params.append(a)
+    sql = f"CALL {proc}({', '.join(slots)})"
+    if params:
+        return session.sql(sql, params=params).collect()
+    return session.sql(sql).collect()
+
+
 def db_new_session():
     try:
-        sid = session.sql(
-            "CALL CHAT_SESSION_NEW(?)", params=[lang]
-        ).collect()[0][0]
+        sid = _call("CHAT_SESSION_NEW", [lang])[0][0]
         st.session_state.persist_error = None
         return int(sid)
     except Exception as e:
-        st.session_state.persist_error = str(e)[:150]
+        st.session_state.persist_error = str(e)[:600]
         return None
 
 
@@ -114,18 +135,13 @@ def db_save(role, content=None, sql_text=None, df=None, rows=None, latency_ms=No
         except Exception:
             result_json = None
     try:
-        # Bound parameters, not string interpolation: RESULT_JSON legitimately
-        # contains quotes and backslashes that would break a literal.
-        session.sql(
-            "CALL CHAT_MESSAGE_SAVE(?, ?, ?, ?, ?, ?, ?)",
-            params=[
-                int(sid), role, content, sql_text, result_json,
-                None if rows is None else int(rows),
-                None if latency_ms is None else int(latency_ms),
-            ],
-        ).collect()
+        _call("CHAT_MESSAGE_SAVE", [
+            int(sid), role, content, sql_text, result_json,
+            None if rows is None else int(rows),
+            None if latency_ms is None else int(latency_ms),
+        ])
     except Exception as e:
-        st.session_state.persist_error = str(e)[:150]
+        st.session_state.persist_error = str(e)[:600]
 
 
 def db_list_sessions():
@@ -133,10 +149,10 @@ def db_list_sessions():
     if st.session_state.sessions_cache is not None:
         return st.session_state.sessions_cache
     try:
-        rows = session.sql("CALL CHAT_SESSION_LIST()").collect()
+        rows = _call("CHAT_SESSION_LIST", [])
         st.session_state.sessions_cache = [r.as_dict() for r in rows]
     except Exception as e:
-        st.session_state.persist_error = str(e)[:150]
+        st.session_state.persist_error = str(e)[:600]
         st.session_state.sessions_cache = []
     return st.session_state.sessions_cache
 
@@ -147,11 +163,9 @@ def invalidate_sessions():
 
 def db_load_session(sid):
     try:
-        rows = session.sql(
-            "CALL CHAT_SESSION_LOAD(?)", params=[int(sid)]
-        ).collect()
+        rows = _call("CHAT_SESSION_LOAD", [int(sid)])
     except Exception as e:
-        st.session_state.persist_error = str(e)[:150]
+        st.session_state.persist_error = str(e)[:600]
         return None
     msgs = []
     for r in rows:
@@ -177,9 +191,9 @@ def db_load_session(sid):
 
 def db_delete_session(sid):
     try:
-        session.sql("CALL CHAT_SESSION_DELETE(?)", params=[int(sid)]).collect()
+        _call("CHAT_SESSION_DELETE", [int(sid)])
     except Exception as e:
-        st.session_state.persist_error = str(e)[:150]
+        st.session_state.persist_error = str(e)[:600]
 
 
 def ensure_session():
@@ -408,6 +422,8 @@ with st.sidebar:
 
     if st.session_state.get("persist_error"):
         st.caption("⚠️ History unavailable — chat still works in this session.")
+        with st.expander("Why?"):
+            st.code(str(st.session_state.persist_error), language="text")
 
     st.markdown("---")
 

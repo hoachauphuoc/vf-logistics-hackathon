@@ -15,13 +15,25 @@
 --   2. Ownership is enforced inside every procedure against CURRENT_USER().
 --      Owner-rights procedures swap CURRENT_ROLE() to the owner but leave
 --      CURRENT_USER() as the caller, which is what makes per-user scoping work.
---   3. SESSION_ID is generated solely by the autoincrement on CHAT_SESSION.
---      An earlier revision also created a CHAT_SESSION_SEQ sequence; that was
---      removed because two independent generators can collide on the primary
---      key. Do not reintroduce it.
+--   3. SESSION_ID is generated solely by CHAT_SESSION_SEQ. The column
+--      originally carried an autoincrement default; it was removed with
+--      ALTER COLUMN SESSION_ID DROP DEFAULT because Snowflake identity
+--      allocates in blocks and is NOT monotonic, so a procedure that inserted
+--      without an explicit id and then read it back with MAX(SESSION_ID) could
+--      return a different, pre-existing session and append turns to the wrong
+--      conversation. Keep exactly one generator: do not re-add the identity.
 --   4. Result tables are replayed from the stored RESULT_JSON snapshot rather
 --      than by re-running SQL_TEXT, so reopening a conversation costs no
 --      warehouse compute and cannot show different rows than were first shown.
+--   5. CLIENT NOTE for anyone calling these procedures from Streamlit-in-
+--      Snowflake: do NOT bind a Python None as a parameter. The connector
+--      bundled with the SiS runtime sends it as the string 'None', which raises
+--      "Numeric value 'None' is not recognized" on a NUMBER parameter and, worse,
+--      is accepted silently on a VARCHAR parameter and stores the text 'None'.
+--      Emit SQL NULL as a literal for absent arguments and bind only real
+--      values. See the _call() helper in streamlit_app/pages/6_AI_Chat.py.
+--      Note this does not reproduce on a current local Snowpark install, so it
+--      cannot be caught by local testing alone.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -35,7 +47,7 @@
 -- ---------------------------------------------------------------------------
 
 create or replace TABLE CHAT_SESSION (
-        SESSION_ID NUMBER(38,0) NOT NULL autoincrement start 100 increment 1 noorder,
+        SESSION_ID NUMBER(38,0) NOT NULL,
         USER_ID VARCHAR(100),
         BL_ID NUMBER(38,0),
         SESSION_START TIMESTAMP_NTZ(9) DEFAULT CURRENT_TIMESTAMP(),
@@ -47,6 +59,10 @@ create or replace TABLE CHAT_SESSION (
         TITLE VARCHAR(200),
         primary key (SESSION_ID)
 );
+
+-- Sole generator for CHAT_SESSION.SESSION_ID. Starts at 1000 to stay clear of
+-- ids already issued by the identity default that this replaced.
+create or replace sequence CHAT_SESSION_SEQ start with 1000 increment by 1 noorder;
 
 create or replace TABLE CHAT_MESSAGE (
         MESSAGE_ID NUMBER(38,0) autoincrement start 1 increment 1 noorder,
@@ -74,12 +90,14 @@ $$
 DECLARE
   V_ID NUMBER;
 BEGIN
-  -- SESSION_ID is an autoincrement primary key on CHAT_SESSION; we deliberately
-  -- do NOT supply it, so there is exactly one id generator for this table.
+  -- The identity default was removed from CHAT_SESSION.SESSION_ID so that this
+  -- sequence is the single id generator. Do not re-add an autoincrement here:
+  -- Snowflake identity allocates in blocks and is not monotonic, so deriving the
+  -- new id with MAX(SESSION_ID) could return a different, pre-existing session.
+  V_ID := (SELECT MENDIX_APP.AGENTS.CHAT_SESSION_SEQ.NEXTVAL);
   INSERT INTO MENDIX_APP.AGENTS.CHAT_SESSION
-    (USER_ID, SESSION_START, MESSAGE_COUNT, LANGUAGE, TOKENS_USED, CREATED_AT, TITLE)
-  SELECT CURRENT_USER(), CURRENT_TIMESTAMP(), 0, :P_LANG, 0, CURRENT_TIMESTAMP(), NULL;
-  V_ID := (SELECT MAX(SESSION_ID) FROM MENDIX_APP.AGENTS.CHAT_SESSION WHERE USER_ID = CURRENT_USER());
+    (SESSION_ID, USER_ID, SESSION_START, MESSAGE_COUNT, LANGUAGE, TOKENS_USED, CREATED_AT, TITLE)
+  SELECT :V_ID, CURRENT_USER(), CURRENT_TIMESTAMP(), 0, :P_LANG, 0, CURRENT_TIMESTAMP(), NULL;
   RETURN :V_ID;
 END;
 $$;
