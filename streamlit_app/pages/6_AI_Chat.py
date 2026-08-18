@@ -1,49 +1,54 @@
 import streamlit as st
 import time
 from snowflake.snowpark.context import get_active_session
-from i18n import init_language
 
 st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
 session = get_active_session()
-t = init_language()
+
+# Language support
+if "lang" not in st.session_state:
+    st.session_state.lang = "EN"
 lang = st.session_state.lang
 
-st.title(t["ai_chat_title"])
-st.caption(t["ai_chat_caption"])
+TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Trợ lý AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
+CAPTIONS = {"EN": "Ask about shipments, compliance, fraud — powered by Cortex AI", "VN": "Hỏi về lô hàng, tuân thủ, gian lận — Cortex AI", "JA": "出荷・コンプライアンス・不正について質問 — Cortex AI"}
+THINKING = {"EN": "Thinking...", "VN": "Đang suy nghĩ...", "JA": "考えています..."}
+WELCOME = {
+    "EN": "Hello! I'm VF Logistics AI Assistant. I can help you with:\n- Shipment tracking and analytics\n- Fraud detection and compliance\n- Revenue analysis and KPIs\n\nAsk me anything about your logistics data!",
+    "VN": "Xin chào! Tôi là Trợ lý AI VF Logistics. Tôi có thể giúp bạn:\n- Theo dõi và phân tích lô hàng\n- Phát hiện gian lận và tuân thủ\n- Phân tích doanh thu và KPI\n\nHãy hỏi tôi bất cứ điều gì về dữ liệu logistics!",
+    "JA": "こんにちは！VF Logistics AIアシスタントです。以下のことをお手伝いします：\n- 出荷追跡と分析\n- 不正検出とコンプライアンス\n- 収益分析とKPI\n\n物流データについて何でもお聞きください！"
+}
 
-# Read AI model
+st.title(TITLES[lang])
+st.caption(CAPTIONS[lang])
+
+# Read AI model from config
 try:
     ai_model = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]["CONFIG_VALUE"]
 except Exception:
     ai_model = "mistral-large2"
 
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# Initialize chat history in session state (persists during session)
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
+if "chat_session_id" not in st.session_state:
+    st.session_state.chat_session_id = int(time.time())
 
 
-def safe_rerun():
-    # st.rerun() was added in Streamlit 1.27; the Streamlit-in-Snowflake warehouse
-    # runtime conda environment can pin an older version that only has the
-    # deprecated st.experimental_rerun().
-    if hasattr(st, "rerun"):
-        st.rerun()
-    elif hasattr(st, "experimental_rerun"):
-        st.experimental_rerun()
-
-
-def cortex_complete_logged(model, prompt, context):
-    """Call Cortex COMPLETE and log the real latency + an estimated token count to AI_CALL_LOG."""
+def cortex_chat(prompt, context="chat"):
     start = time.time()
-    status = "SUCCESS"
     answer = ""
+    status = "SUCCESS"
     try:
-        result = session.sql("SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[model, prompt]).collect()[0][0]
+        result = session.sql(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?)", params=[ai_model, prompt]
+        ).collect()[0][0]
         answer = str(result)
         return answer
-    except Exception:
+    except Exception as e:
         status = "ERROR"
-        raise
+        return f"Error: {str(e)[:200]}"
     finally:
         elapsed_ms = int((time.time() - start) * 1000)
         in_tokens = max(1, len(prompt) // 4)
@@ -54,7 +59,7 @@ def cortex_complete_logged(model, prompt, context):
                     (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS,
                      LATENCY_MS, INPUT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS, PROMPT, RESPONSE)
                 SELECT CURRENT_TIMESTAMP(), ?, 'AI_CHAT', ?, ?, ?, ?, ?, ?, ?, ?, ?
-            """, params=[model, context, status, status, elapsed_ms, in_tokens, out_tokens,
+            """, params=[ai_model, context, status, status, elapsed_ms, in_tokens, out_tokens,
                          in_tokens + out_tokens, prompt[:5000], answer[:10000]]).collect()
         except Exception:
             pass
@@ -62,32 +67,33 @@ def cortex_complete_logged(model, prompt, context):
 
 def generate_response(question):
     try:
-        # Step 1: Determine if this is a data question or conversational
-        classify_prompt = f"Classify this user message as either DATA_QUERY (needs SQL to answer from a database about shipments, carriers, ports, freight, fraud alerts) or CONVERSATION (greeting, chitchat, general question, help request). Return ONLY one word: DATA_QUERY or CONVERSATION. Message: {question}"
-        msg_type = cortex_complete_logged(ai_model, classify_prompt, "classify_intent")
-        msg_type = msg_type.strip().upper()
+        classify_prompt = (
+            "Classify this message as DATA_QUERY (needs SQL about shipments/carriers/ports/fraud) "
+            "or CONVERSATION (greeting, chitchat, help). Return ONLY one word. Message: " + question
+        )
+        msg_type = cortex_chat(classify_prompt, "classify_intent").strip().upper()
 
-        # Step 2: If conversational, respond directly
         if "CONVERSATION" in msg_type or "DATA" not in msg_type:
-            chat_prompt = f"""You are VF Logistics AI Assistant - a maritime shipping intelligence system.
-You can help with: shipment tracking, carrier analytics, fraud detection, compliance checks, exchange rates.
-Answer in the SAME LANGUAGE the user uses (Vietnamese, English, Japanese).
-Be friendly, concise, and helpful. If the user asks what you can do, list your capabilities.
+            chat_prompt = (
+                "You are VF Logistics AI Assistant - a maritime shipping intelligence system. "
+                "You can help with: shipment tracking, carrier analytics, fraud detection, compliance, exchange rates. "
+                "Answer in the SAME LANGUAGE the user uses. Be friendly, concise, and helpful.\n\n"
+                f"User: {question}"
+            )
+            return cortex_chat(chat_prompt, "conversation"), None
 
-User: {question}"""
-            answer = cortex_complete_logged(ai_model, chat_prompt, "conversation")
-            return answer, None
-
-        # Step 3: For data questions, generate SQL
-        prompt = f"""You are a SQL expert for maritime logistics on Snowflake.
-Write a SELECT query to answer this question. Available tables:
-- MENDIX_APP.AGENTS.BILL_OF_LADING (BL_ID, BL_NUMBER, CARRIER_NAME, VESSEL_NAME, PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE, ETD, ETA, CONTAINER_NUMBER, COMMODITY_DESCRIPTION, GROSS_WEIGHT_KGS, TOTAL_CHARGES, STATUS, PAYMENT_STATUS, SHIPPER_NAME, CONSIGNEE_NAME, CREATED_AT)
-- MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_ID, BL_ID, ALERT_TYPE, SEVERITY, DESCRIPTION, STATUS, DETECTED_AT)
-Return ONLY the SQL query, no explanation. Add LIMIT 20 for list queries.
-Question: {question}"""
-
-        sql_result = cortex_complete_logged(ai_model, prompt, "text_to_sql")
-
+        sql_prompt = (
+            "You are a SQL expert for maritime logistics on Snowflake. "
+            "Write a SELECT query to answer this question. Available tables:\n"
+            "- MENDIX_APP.AGENTS.BILL_OF_LADING (BL_ID, BL_NUMBER, CARRIER_NAME, VESSEL_NAME, "
+            "PORT_OF_LOADING_LOCODE, PORT_OF_DISCHARGE_LOCODE, ETD, ETA, CONTAINER_NUMBER, "
+            "COMMODITY_DESCRIPTION, GROSS_WEIGHT_KGS, TOTAL_CHARGES, STATUS, PAYMENT_STATUS, "
+            "SHIPPER_NAME, CONSIGNEE_NAME, CREATED_AT)\n"
+            "- MENDIX_APP.AGENTS.FRAUD_ALERT (ALERT_ID, BL_ID, ALERT_TYPE, SEVERITY, DESCRIPTION, STATUS, DETECTED_AT)\n"
+            "Return ONLY the SQL query, no explanation. Add LIMIT 20 for list queries.\n"
+            f"Question: {question}"
+        )
+        sql_result = cortex_chat(sql_prompt, "text_to_sql")
         sql = sql_result.strip()
         if "```" in sql:
             parts = sql.split("```")
@@ -98,27 +104,17 @@ Question: {question}"""
                 sql = sql.strip()
 
         sql_upper = sql.upper().strip()
-        if not sql_upper.startswith("SELECT"):
-            chat_prompt = f"You are VF Logistics AI assistant. Answer in the same language as the user. Question: {question}"
-            answer = cortex_complete_logged(ai_model, chat_prompt, "not_select_fallback")
-            return answer, None
+        if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
+            fallback = f"Answer this maritime logistics question briefly: {question}"
+            return cortex_chat(fallback, "not_select_fallback"), None
 
-        # Safety: this app runs with owner's-rights execution (Streamlit-in-Snowflake
-        # warehouse runtime always executes as the app owner, not the viewer -- see
-        # docs.snowflake.com/en/developer-guide/streamlit/object-management/owners-rights).
-        # A DML keyword blocklist is not a real security boundary against a model-generated
-        # query running with the owner's full privileges, so instead of blocklisting we
-        # allowlist: reject anything but a single simple SELECT, and reject any statement
-        # that references a table outside the two this feature was designed for.
         if ";" in sql.rstrip(";"):
             return "I can only run a single SELECT statement for safety.", None
 
-        # Only inspect identifiers that follow FROM/JOIN -- checking every identifier
-        # in the query would also catch ordinary column names and break real questions.
-        allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
         import re
-        referenced_tables = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
-        table_names = {t2.split(".")[-1] for t2 in referenced_tables}
+        allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
+        referenced = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
+        table_names = {t.split(".")[-1] for t in referenced}
         if not table_names or not table_names.issubset(allowed_tables):
             return "I can only query BILL_OF_LADING and FRAUD_ALERT for safety.", None
 
@@ -126,9 +122,8 @@ Question: {question}"""
             sql = sql.rstrip(";") + " LIMIT 20"
 
         data = session.sql(sql).collect()
-
         if not data:
-            return "No results found.", sql
+            return "No results found for your query.", sql
 
         if len(data) == 1 and len(data[0].as_dict()) <= 3:
             row = data[0].as_dict()
@@ -139,8 +134,10 @@ Question: {question}"""
             answer += "| " + " | ".join(cols) + " |\n"
             answer += "| " + " | ".join(["---"] * len(cols)) + " |\n"
             for row in data[:10]:
-                vals = [str(v)[:25] if v is not None else "-" for v in row.as_dict().values()]
+                vals = [str(v)[:30] if v is not None else "-" for v in row.as_dict().values()]
                 answer += "| " + " | ".join(vals) + " |\n"
+            if len(data) > 10:
+                answer += f"\n*...and {len(data) - 10} more rows*"
 
         return answer, sql
 
@@ -149,85 +146,88 @@ Question: {question}"""
         if "SQL compilation" in err:
             try:
                 fallback = f"Answer this maritime logistics question briefly: {question}"
-                ans = cortex_complete_logged(ai_model, fallback, "sql_error_fallback")
-                return ans, None
+                return cortex_chat(fallback, "sql_error_fallback"), None
             except Exception as e2:
                 return f"Error: {str(e2)[:150]}", None
         return f"Error: {err[:150]}", None
 
-# Sidebar quick questions
+
+# Sidebar
 with st.sidebar:
-    st.subheader(t["quick_questions"])
-    questions_list = [t["q_pending"], t["q_top_carriers"], t["q_high_severity"], t["q_avg_charges"], t["q_total_weight"]]
-    for q in questions_list:
-        if st.button(q, key=f"q_{hash(q)}"):
-            st.session_state.pending_question = q
+    st.markdown(f"**Model:** `{ai_model}`")
+    st.markdown(f"**Messages:** {len(st.session_state.chat_messages)}")
+    st.divider()
+
+    st.markdown("**Quick Questions**" if lang == "EN" else "**Câu hỏi nhanh**" if lang == "VN" else "**クイック質問**")
+    quick_qs = {
+        "EN": ["How many shipments are pending?", "Top 5 carriers by revenue", "Show high severity alerts", "Total weight this month"],
+        "VN": ["Bao nhiêu lô hàng đang chờ?", "Top 5 hãng tàu theo doanh thu", "Hiện cảnh báo mức cao", "Tổng trọng lượng tháng này"],
+        "JA": ["承認待ちの出荷数は？", "収益トップ5船社", "重大アラートを表示", "今月の総重量"]
+    }
+    for q in quick_qs[lang]:
+        if st.button(q, key=f"qq_{hash(q)}", use_container_width=True):
+            st.session_state.chat_messages.append({"role": "user", "content": q})
+            with st.spinner(THINKING[lang]):
+                answer, sql = generate_response(q)
+            st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})
+            st.rerun()
 
     st.divider()
-    if st.button(t["clear_chat"]):
-        st.session_state.messages = []
-        if "pending_question" in st.session_state:
-            del st.session_state.pending_question
-        safe_rerun()
-    st.caption(t["model_label"].format(model=ai_model))
 
-# Display existing messages
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(t["you_label"].format(v=msg['content']))
-    else:
-        st.markdown(t["assistant_label"].format(v=msg['content']))
+    # Pipeline button in sidebar (merging external portal functionality)
+    st.markdown("**Pipeline**" if lang == "EN" else "**Quy trình**" if lang == "VN" else "**パイプライン**")
+    if st.button("Run Full Pipeline", key="sidebar_pipeline", use_container_width=True):
+        with st.spinner("Running pipeline..."):
+            try:
+                result = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
+                st.session_state.chat_messages.append({
+                    "role": "assistant",
+                    "content": f"Pipeline completed:\n```json\n{result}\n```",
+                    "sql": None
+                })
+            except Exception as e:
+                st.session_state.chat_messages.append({
+                    "role": "assistant",
+                    "content": f"Pipeline error: {str(e)[:200]}",
+                    "sql": None
+                })
+        st.rerun()
+
+    if st.button("Clear Chat" if lang == "EN" else "Xoa hoi thoai" if lang == "VN" else "クリア", key="clear_chat", use_container_width=True):
+        st.session_state.chat_messages = []
+        st.session_state.chat_session_id = int(time.time())
+        st.rerun()
+
+# Display chat history using st.chat_message
+if not st.session_state.chat_messages:
+    with st.chat_message("assistant"):
+        st.markdown(WELCOME[lang])
+
+for msg in st.session_state.chat_messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
         if msg.get("sql"):
-            with st.expander(t["sql_generated"]):
+            with st.expander("SQL Generated"):
                 st.code(msg["sql"], language="sql")
-    st.divider()
 
-# Chat input using text_input + button
-st.markdown("---")
-col1, col2 = st.columns([5, 1])
-with col1:
-    user_input = st.text_input(
-        t["ask_question"],
-        placeholder=t["ask_question_placeholder"],
-        key="chat_input",
-        value=st.session_state.get("pending_question", ""),
-        label_visibility="collapsed"
-    )
-with col2:
-    send_clicked = st.button(t["send"], type="primary", use_container_width=True)
+# Chat input using st.chat_input (native chat UX)
+if user_input := st.chat_input(
+    "Ask about shipments, fraud, compliance..."
+    if lang == "EN" else
+    "Hoi ve lo hang, gian lan, tuan thu..."
+    if lang == "VN" else
+    "出荷・不正・コンプライアンスについて質問..."
+):
+    st.session_state.chat_messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
-# Process input
-if send_clicked and user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("assistant"):
+        with st.spinner(THINKING[lang]):
+            answer, sql = generate_response(user_input)
+        st.markdown(answer)
+        if sql:
+            with st.expander("SQL Generated"):
+                st.code(sql, language="sql")
 
-    with st.spinner(t["thinking"]):
-        answer, sql = generate_response(user_input)
-
-    st.session_state.messages.append({"role": "assistant", "content": answer, "sql": sql})
-
-    # Log session
-    try:
-        msg_count = len([m for m in st.session_state.messages if m["role"] == "user"])
-        session.sql("""
-            INSERT INTO CHAT_SESSION (USER_ID, SESSION_START, MESSAGE_COUNT, LANGUAGE)
-            SELECT CURRENT_USER(), CURRENT_TIMESTAMP(), ?, ?
-        """, params=[msg_count, lang]).collect()
-    except Exception:
-        pass
-
-    # Clear pending question
-    if "pending_question" in st.session_state:
-        del st.session_state.pending_question
-
-    safe_rerun()
-
-# Welcome message if no history
-if not st.session_state.messages:
-    st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.info(t["welcome_shipments"])
-    with c2:
-        st.info(t["welcome_fraud"])
-    with c3:
-        st.info(t["welcome_analytics"])
+    st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})

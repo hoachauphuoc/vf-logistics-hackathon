@@ -33,7 +33,7 @@ C:\Users\phuochoa\Mendix\VF_Logistics_Portal-main_2\javasource\vf_logistics_port
   4. Return the staged file path
 
 **JDBC Config**:
-- Account: `AYUGBCE-JX50275`
+- Account: `DPYXIQZ-FN71223`
 - User: `HOACHAU`
 - Auth: JWT with `private_key_file=C:/Users/phuochoa/.snowflake/keys/snowflake_key.p8`
 - Database: `MENDIX_APP`

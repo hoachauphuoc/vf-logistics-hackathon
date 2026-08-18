@@ -96,8 +96,8 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
 Upload as many Bills of Lading as you like in a single command, then take them all the way to an autonomous decision with one more:
 
 ```bash
-snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection ayugbce-jx50275
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection ayugbce-jx50275
+snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection dpyxiqz-fn71223
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection dpyxiqz-fn71223
 ```
 
 If you are reproducing this on the author's workstation, note that the local `snow` CLI OAuth path is unreliable there; the same commands were therefore executed through **Cortex Code's SQL runner** during validation and in the final demo script.
@@ -115,7 +115,7 @@ It ships **suspended** so an idle trial account is not billed.
 
 ### Option B — Fraud pipeline only (fastest live demo, no upload needed)
 ```bash
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ayugbce-jx50275
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection dpyxiqz-fn71223
 ```
 
 One alert per call keeps the demo fast. To work down a backlog instead, pass a batch size — the orchestrator loops through that many open HIGH-severity alerts in a single invocation, logging every step of every alert:
@@ -125,7 +125,7 @@ CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO', 10);   -- process up to
 
 ### Option C — Full demo script (seed data + run + show audit trail)
 ```bash
-snow sql -f sql/workflows/run_full_workflow_demo.sql --connection ayugbce-jx50275
+snow sql -f sql/workflows/run_full_workflow_demo.sql --connection dpyxiqz-fn71223
 ```
 
 The home-dashboard "Run Pipeline" demo shortcut was deliberately removed from the Streamlit UI because it called a scripted `DEMO_PIPELINE()` helper rather than the real orchestrator, and that helper procedure has since been **dropped from the database entirely** — there is no scripted demo path left in this account. The only pipeline button in the UI runs the real backend flow.
@@ -135,7 +135,7 @@ The home-dashboard "Run Pipeline" demo shortcut was deliberately removed from th
 
 ### Option E — From Python/Snowpark
 ```bash
-python python/snowpark_risk_scoring.py --connection ayugbce-jx50275 --run-workflow
+python python/snowpark_risk_scoring.py --connection dpyxiqz-fn71223 --run-workflow
 ```
 
 **Expected output** (~6-15s execution):
@@ -292,3 +292,25 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 - Write-capable controls were removed from Streamlit pages that run under Snowflake owner's-rights execution, so reviewer access cannot accidentally mutate shared config or shipment state through the UI
 - `BL_SEARCH_SERVICE` (Cortex Search) is currently **live and serving** (`indexing_state = ACTIVE`), so semantic search works immediately with no manual resume step. Note that a *suspended* Cortex Search Service does **not** auto-resume on query — it raises `error_code 399131`; if it is ever suspended to save credits, resume it explicitly with `ALTER CORTEX SEARCH SERVICE MENDIX_APP.AGENTS.BL_SEARCH_SERVICE RESUME;`
 - Full system validation report is captured in [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md), including a **2026-08-17 re-validation** section confirming the pipeline still runs correctly after an extended idle period
+
+---
+
+## 11. Refinement Phase (2026-08-18)
+
+After being shortlisted, 3 evaluator feedback items were addressed:
+
+### Fix 1: File Ingestion & System Administrator Errors
+- Root cause: `PROCESS_BL_DOCUMENTS` ran as `EXECUTE AS CALLER`, causing permission failures when called from the Mendix service user via JDBC
+- Fix: Changed to `EXECUTE AS OWNER` with a per-file exception handler that logs errors to `ERROR_LOG` and continues processing remaining files, returning a JSON status summary instead of throwing
+- Auto-sync merged: `SYNC_EXTRACTED_TO_BILL_OF_LADING()` is now called automatically at the end of `PROCESS_BL_DOCUMENTS`, eliminating the need for a separate sync step
+
+### Fix 2+3: Unified Chat Interface with Session History Persistence
+- Redesigned `6_AI_Chat.py` using native `st.chat_message` / `st.chat_input` components for proper conversational UX
+- Chat history persists in `st.session_state.chat_messages` throughout the session (evaluator feedback: "conversation should persist during session")
+- Sidebar includes quick-question buttons and a "Run Full Pipeline" button, merging the external portal workflow trigger into the native Streamlit app
+- Pipeline results are displayed inline in the chat conversation
+
+### Infrastructure
+- Migrated to new Snowflake trial account (`DPYXIQZ-FN71223`, expires 2026-09-04) with full schema, data, and all 46 procedures
+- Generated new RSA key pair for `MENDIX_SERVICE_USER` key-pair JWT authentication
+- Updated `CallCortexAgent.java` account identifier
