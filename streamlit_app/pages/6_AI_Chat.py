@@ -268,6 +268,21 @@ SCHEMA_HINT = (
     "- V_AI_USAGE_SUMMARY (PROCEDURE_NAME, CALL_COUNT, TOTAL_TOKENS, AVG_LATENCY_MS, ERROR_RATE_PCT)\n"
     "Note: BILL_OF_LADING joins FRAUD_ALERT / SAP_FI_DOCUMENT / COMPLIANCE_CHECK_RESULT on BL_ID, "
     "and PORT_MASTER.PORT_CODE = BILL_OF_LADING.PORT_OF_LOADING_LOCODE.\n"
+    "\n"
+    "IMPORTANT - use these exact literal values, do not invent your own:\n"
+    "- BILL_OF_LADING.STATUS: 'In_Transit', 'Delivered', 'APPROVED', 'Pending_Review', "
+    "'VALIDATED', 'SAP_POSTED', 'DRAFT', 'BLOCKED'. There is no value 'PENDING' — "
+    "a question about pending or awaiting-review shipments means STATUS = 'Pending_Review'.\n"
+    "- BILL_OF_LADING.PAYMENT_STATUS: 'PAID', 'UNPAID'\n"
+    "- BILL_OF_LADING.CARRIER_NAME: 'MAERSK', 'MSC', 'COSCO', 'HAPAG_LLOYD', 'CMA_CGM', "
+    "'EVERGREEN', 'ONE', 'OOCL', 'APL', 'YANG_MING'\n"
+    "- FRAUD_ALERT.SEVERITY: 'HIGH', 'MEDIUM', 'LOW'\n"
+    "- FRAUD_ALERT.STATUS: 'OPEN', 'INVESTIGATING', 'ESCALATED', 'RESOLVED', 'DISMISSED'\n"
+    "- FRAUD_ALERT.ALERT_TYPE: 'DUPLICATE_BL_NUMBER', 'COST_PER_KG_ANOMALY', 'ROUTE_DEVIATION', "
+    "'WEIGHT_ANOMALY', 'HIGH_VALUE_ANOMALY', 'DOCUMENT_QUALITY'\n"
+    "- FRAUD_ALERT.AI_RECOMMENDED_ACTION and V_AI_DECISIONS.AI_DECISION: 'BLOCK', 'CLEAR', 'ESCALATE'\n"
+    "- BILL_OF_LADING_EXTRACTED.FINAL_STATUS: 'APPROVED', 'CORRECTED'\n"
+    "For case-insensitive matching on free-text columns prefer ILIKE over =.\n"
 )
 
 
