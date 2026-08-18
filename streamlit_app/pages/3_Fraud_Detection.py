@@ -1,13 +1,21 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language, rename_columns
+import ui
 
 st.set_page_config(page_title="Fraud Detection", page_icon="🛡️", layout="wide")
 session = get_active_session()
 t = init_language()
 lang = st.session_state.lang
 
-st.title(t["fraud_center_title"])
+ui.page_header(
+    t["fraud_center_title"],
+    "Calibrated detection → Cortex AI investigation → sanctions screening → autonomous action"
+    if lang == "EN" else
+    "Phát hiện theo phân vị → Cortex AI điều tra → sàng lọc cấm vận → hành động tự động"
+    if lang == "VN" else
+    "検知 → Cortex AI調査 → 制裁スクリーニング → 自律アクション"
+)
 
 # KPIs
 try:
@@ -29,8 +37,13 @@ try:
         st.metric(t["medium_severity"], fraud_kpis["MED_SEV"])
     with k4:
         st.metric(t["total_open"], fraud_kpis["OPEN_ALERTS"])
+    ui.caption_scope(
+        "Across every alert ever raised in FRAUD_ALERT."
+        if lang == "EN" else
+        "Tính trên toàn bộ cảnh báo trong FRAUD_ALERT."
+    )
 except Exception as e:
-    st.warning(t["kpi_load_error"].format(err=str(e)[:80]))
+    ui.load_error("Fraud KPIs", e)
 
 st.divider()
 
@@ -118,7 +131,7 @@ try:
     """).to_pandas()
 
     if decisions.empty:
-        st.info(t["no_ai_decisions"])
+        ui.empty_state(t["no_ai_decisions"])
     else:
         d1, d2, d3 = st.columns(3)
         with d1:
@@ -127,8 +140,18 @@ try:
             st.metric(t["escalated_metric"], int((decisions["AI_DECISION"] == "ESCALATE").sum()))
         with d3:
             st.metric(t["cleared_metric"], int((decisions["AI_DECISION"] == "CLEAR").sum()))
+        # These three counts come from the LIMIT 50 query above, not from the whole
+        # table. Without saying so they sit directly beneath the all-time KPIs and
+        # read as a contradiction ("460 alerts" above, "50 decisions" below).
+        ui.caption_scope(
+            f"Across the {len(decisions)} most recently AI-analysed alerts, not all time. "
+            "Run EVALUATE_AI_DECISIONS() for the full-population breakdown."
+            if lang == "EN" else
+            f"Tính trên {len(decisions)} cảnh báo được AI phân tích gần nhất, không phải toàn bộ. "
+            "Gọi EVALUATE_AI_DECISIONS() để xem toàn bộ."
+        )
 
-        st.dataframe(decisions, use_container_width=True, height=320)
+        ui.show_table(decisions, height=320)
 
         st.markdown(t["full_assessment_label"])
         selected = st.selectbox(
@@ -147,7 +170,7 @@ try:
                 st.text(row["AI_RISK_ASSESSMENT"] or "No assessment text stored.")
                 st.caption(t["applied_action_label"].format(v=row['RESOLUTION_NOTES']))
 except Exception as e:
-    st.warning(t["ai_decisions_load_error"].format(err=str(e)[:120]))
+    ui.load_error("AI decisions", e)
 
 st.divider()
 
@@ -164,11 +187,11 @@ try:
     """).to_pandas()
 
     if not alerts.empty:
-        st.dataframe(rename_columns(alerts, lang), use_container_width=True, height=400)
+        ui.show_table(rename_columns(alerts, lang), height=400)
     else:
-        st.info(t["no_alerts_yet"])
+        ui.empty_state(t["no_alerts_yet"])
 except Exception as e:
-    st.warning(t["alerts_load_error"].format(err=str(e)[:80]))
+    ui.load_error("Alert history", e)
 
 # Alert Distribution Chart
 st.divider()
@@ -181,9 +204,17 @@ with chart_col1:
             FROM FRAUD_ALERT GROUP BY ALERT_TYPE ORDER BY COUNT DESC
         """).to_pandas()
         if not type_data.empty:
-            st.bar_chart(type_data.set_index("ALERT_TYPE")["COUNT"])
-    except Exception:
-        st.info(t["no_data"])
+            # Horizontal bars: these categories are long identifiers such as
+            # COST_PER_KG_ANOMALY and DOCUMENT_QUALITY. st.bar_chart put them on the
+            # x-axis where they were rotated and truncated to an unreadable stub.
+            st.plotly_chart(
+                ui.hbar(type_data["ALERT_TYPE"], type_data["COUNT"].astype(int),
+                        value_name="Alerts"),
+                use_container_width=True)
+        else:
+            ui.empty_state(t["no_data"])
+    except Exception as e:
+        ui.load_error("Alerts by type", e)
 
 with chart_col2:
     st.subheader(t["alerts_by_severity"])
@@ -193,6 +224,11 @@ with chart_col2:
             FROM FRAUD_ALERT GROUP BY SEVERITY ORDER BY COUNT DESC
         """).to_pandas()
         if not sev_data.empty:
-            st.bar_chart(sev_data.set_index("SEVERITY")["COUNT"])
-    except Exception:
-        st.info(t["no_data"])
+            st.plotly_chart(
+                ui.hbar(sev_data["SEVERITY"], sev_data["COUNT"].astype(int),
+                        value_name="Alerts"),
+                use_container_width=True)
+        else:
+            ui.empty_state(t["no_data"])
+    except Exception as e:
+        ui.load_error("Alerts by severity", e)

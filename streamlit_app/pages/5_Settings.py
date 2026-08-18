@@ -1,13 +1,13 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language
+import ui
 
 st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
 session = get_active_session()
 t = init_language()
 
-st.title(t["settings_title"])
-st.caption(t["settings_view_only_notice"])
+ui.page_header(t["settings_title"], t["settings_view_only_notice"])
 
 try:
     configs = session.sql("SELECT CONFIG_KEY, CONFIG_VALUE FROM APP_CONFIG").collect()
@@ -32,8 +32,18 @@ with col4:
 
 st.divider()
 st.subheader(t["all_config"])
+ui.caption_scope(
+    "Every key in APP_CONFIG. The four cards above are the values the app reads "
+    "most often; this is the full table so nothing is hidden."
+    if st.session_state.lang == "EN" else
+    "Toàn bộ khóa trong APP_CONFIG. Bốn thẻ trên là các giá trị ứng dụng dùng nhiều nhất; "
+    "bảng dưới liệt kê đầy đủ để không ẩn gì."
+)
 try:
     config_df = session.sql("SELECT CONFIG_KEY, CONFIG_VALUE FROM APP_CONFIG ORDER BY CONFIG_KEY").to_pandas()
-    st.dataframe(config_df, use_container_width=True)
+    # Height is set explicitly so the whole table is visible instead of being
+    # squeezed into a short scroll box on an otherwise near-empty page.
+    ui.show_table(config_df.set_index("CONFIG_KEY"),
+                  height=min(38 + 35 * len(config_df) + 3, 700))
 except Exception:
-    st.info(t["config_unavailable"])
+    ui.empty_state(t["config_unavailable"])

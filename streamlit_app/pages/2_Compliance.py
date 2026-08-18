@@ -2,13 +2,13 @@ import streamlit as st
 import json
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language, translate_dynamic, rename_columns
+import ui
 
 st.set_page_config(page_title="Compliance", page_icon="✅", layout="wide")
 session = get_active_session()
 t = init_language()
 
-st.title(t["compliance_title"])
-st.caption(t["compliance_subtitle"])
+ui.page_header(t["compliance_title"], t["compliance_subtitle"])
 
 # Action buttons
 action_col1, action_col2 = st.columns(2)
@@ -49,7 +49,10 @@ with action_col2:
     st.markdown(f"**{t['bulk_scan']}**")
     st.caption(t["bulk_scan_desc"])
     batch_size = st.number_input(t["batch_size"], min_value=10, max_value=200, value=50, key="compliance_batch")
-    if st.button(t["run_bulk_scan"], type="primary"):
+    # Not type="primary": the page's primary action is the single check on the left.
+    # Marking every button primary removes the hierarchy that makes one of them
+    # primary in the first place.
+    if st.button(t["run_bulk_scan"]):
         with st.spinner(t["scanning_compliance"]):
             try:
                 import json as json_mod
@@ -113,11 +116,11 @@ try:
     dg_df = get_dg_cargo()
     if len(dg_df) > 0:
         st.warning(t["dg_found"].format(n=len(dg_df)))
-        st.dataframe(rename_columns(dg_df.set_index("BL_NUMBER"), st.session_state.lang), use_container_width=True)
+        ui.show_table(rename_columns(dg_df.set_index("BL_NUMBER"), st.session_state.lang))
     else:
         st.success(t["dg_clear"])
 except Exception as e:
-    st.warning(f"⚠️ {str(e)[:100]}")
+    ui.load_error("Dangerous goods", e)
 
 # Currency Conversion
 st.divider()
@@ -130,7 +133,7 @@ with cx_col2:
 with cx_col3:
     to_cur = st.selectbox(t["to"], ["VND", "JPY", "EUR", "CNY", "USD", "KRW", "SGD"])
 
-if st.button(t["convert"], type="primary"):
+if st.button(t["convert"]):
     try:
         result = session.sql("CALL GET_EXCHANGE_RATE(?, ?, ?)", params=[from_cur, to_cur, amount]).collect()[0][0]
         data = json.loads(result) if isinstance(result, str) else result

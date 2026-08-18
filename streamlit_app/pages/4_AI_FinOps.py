@@ -1,13 +1,13 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language, rename_columns
+import ui
 
 st.set_page_config(page_title="AI Analytics", page_icon="🤖", layout="wide")
 session = get_active_session()
 t = init_language()
 
-st.title(t["ai_title"])
-st.caption(t["ai_subtitle"])
+ui.page_header(t["ai_title"], t["ai_subtitle"])
 
 # Cached config + today stats
 @st.cache_data(ttl=120)
@@ -91,12 +91,20 @@ st.caption(
 try:
     cost_df = get_cost_trend()
     if len(cost_df) > 0:
-        st.line_chart(cost_df.set_index("DAY")["ESTIMATED_COST_USD"])
-        st.dataframe(rename_columns(cost_df.set_index("DAY"), st.session_state.lang), use_container_width=True)
+        # Sorted ascending for plotting. The query returns DAY DESC so that a LIMIT 30
+        # takes the most recent month; drawing it in that order would run the time
+        # axis backwards.
+        trend = cost_df.sort_values("DAY")
+        st.plotly_chart(
+            ui.line(trend["DAY"].astype(str), trend["ESTIMATED_COST_USD"].astype(float),
+                    y_name="Estimated cost (USD)",
+                    hovertemplate="%{x}<br>Estimated cost: $%{y:.4f}<extra></extra>"),
+            use_container_width=True)
+        ui.show_table(rename_columns(cost_df.set_index("DAY"), st.session_state.lang))
     else:
-        st.info(t["no_data"])
+        ui.empty_state(t["no_data"])
 except Exception as e:
-    st.warning(f"⚠️ {str(e)[:100]}")
+    ui.load_error("Daily cost trend", e)
 
 st.divider()
 
@@ -107,13 +115,18 @@ try:
     if len(usage_df) > 0:
         col1, col2 = st.columns(2)
         with col1:
-            st.bar_chart(usage_df.set_index("PROCEDURE_NAME")["CALL_COUNT"])
+            # Horizontal: procedure names are long identifiers that a vertical axis
+            # truncates into an unreadable stub.
+            st.plotly_chart(
+                ui.hbar(usage_df["PROCEDURE_NAME"], usage_df["CALL_COUNT"].astype(int),
+                        value_name="Calls"),
+                use_container_width=True)
         with col2:
-            st.dataframe(rename_columns(usage_df.set_index("PROCEDURE_NAME"), st.session_state.lang), use_container_width=True)
+            ui.show_table(rename_columns(usage_df.set_index("PROCEDURE_NAME"), st.session_state.lang))
     else:
-        st.info(t["no_data"])
+        ui.empty_state(t["no_data"])
 except Exception as e:
-    st.warning(f"⚠️ {str(e)[:100]}")
+    ui.load_error("Usage by procedure", e)
 
 st.divider()
 
@@ -150,7 +163,7 @@ if total_logs > 0:
         """).to_pandas()
         log_df.index = range(offset + 1, offset + 1 + len(log_df))
         log_df.index.name = "#"
-        st.dataframe(rename_columns(log_df, st.session_state.lang), use_container_width=True)
+        ui.show_table(rename_columns(log_df, st.session_state.lang))
         try:
             st.download_button("📥 Export AI Log CSV", log_df.to_csv(index=False), "ai_call_log.csv", "text/csv", key="log_csv")
         except:
@@ -163,17 +176,46 @@ st.divider()
 # Chat sessions
 st.subheader(t["chat_sessions"])
 try:
+    # Read the counters that CHAT_SESSION already maintains instead of aggregating
+    # CHAT_MESSAGE. Two reasons:
+    #
+    # 1. Correctness. This previously ran COUNT(*) ... GROUP BY SESSION_ID against
+    #    CHAT_SESSION, which holds exactly one row per session, so the message count
+    #    was structurally always 1 no matter how long the conversation was.
+    #    MESSAGE_COUNT is incremented by CHAT_MESSAGE_SAVE and is the real figure.
+    #
+    # 2. Least privilege. HACKATHON_JUDGE_ROLE deliberately has no SELECT on
+    #    CHAT_MESSAGE so one user cannot read another's conversation text. Joining
+    #    that table here would make this panel fail for the judge.
+    #
+    # 3. Privacy. The panel is scoped to CURRENT_USER(). CHAT_SESSION.TITLE is
+    #    auto-derived from the first user message, so listing every session here
+    #    would expose the opening line of other people's conversations through a
+    #    table the judge role legitimately has SELECT on - defeating the point of
+    #    withholding CHAT_MESSAGE. A Streamlit-in-Snowflake app runs with the
+    #    owner's privileges but CURRENT_USER() is still the viewer, so this filter
+    #    scopes rows per viewer without needing a procedure.
+    #
+    # SESSION_ID is cast to VARCHAR so it renders as 1003 rather than being
+    # thousands-separated into "1,003" like a quantity. TOKENS_USED is not shown:
+    # nothing populates it, so it would always read 0 and imply the chat was free.
     chat_df = session.sql("""
-        SELECT SESSION_ID, COUNT(*) as MESSAGES, SUM(TOKENS_USED) as TOTAL_TOKENS,
-               MIN(CREATED_AT) as STARTED, MAX(CREATED_AT) as LAST_MESSAGE
-        FROM CHAT_SESSION GROUP BY SESSION_ID ORDER BY LAST_MESSAGE DESC LIMIT 10
+        SELECT SESSION_ID::VARCHAR      as SESSION,
+               TITLE,
+               MESSAGE_COUNT            as MESSAGES,
+               LANGUAGE                 as LANG,
+               SESSION_START            as STARTED,
+               SESSION_END              as LAST_MESSAGE
+        FROM CHAT_SESSION
+        WHERE USER_ID = CURRENT_USER()
+        ORDER BY SESSION_START DESC LIMIT 10
     """).to_pandas()
     if len(chat_df) > 0:
-        st.dataframe(rename_columns(chat_df.set_index("SESSION_ID"), st.session_state.lang), use_container_width=True)
+        ui.show_table(chat_df.set_index("SESSION"))
     else:
-        st.info(t["no_chat"])
-except Exception as e:
-    st.info(t["no_chat"])
+        ui.empty_state(t["no_chat"])
+except Exception:
+    ui.empty_state(t["no_chat"])
 
 st.divider()
 
@@ -182,7 +224,7 @@ st.subheader("🧠 AI Proactive Insights")
 st.caption("AI analyzes 10K+ records and generates executive-level insights: risks, opportunities, trends, anomalies.")
 
 lang = st.session_state.get("lang", "EN")
-if st.button("🧠 Generate AI Insights" if lang == "EN" else "🧠 Tạo Insights AI" if lang == "VN" else "🧠 AIインサイト生成"):
+if st.button("🧠 Generate AI Insights" if lang == "EN" else "🧠 Tạo Insights AI" if lang == "VN" else "🧠 AIインサイト生成", type="primary"):
     with st.spinner("AI analyzing 10,010 records for patterns..."):
         try:
             import json

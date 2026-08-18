@@ -1,13 +1,21 @@
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 from i18n import init_language, rename_columns
+import ui
 
 st.set_page_config(page_title="Documents", page_icon="📄", layout="wide")
 session = get_active_session()
 t = init_language()
 lang = st.session_state.lang
 
-st.title(t["bl_explorer_title"])
+ui.page_header(
+    t["bl_explorer_title"],
+    "Cortex AI extraction → deterministic validation → review → SAP posting"
+    if lang == "EN" else
+    "Trích xuất Cortex AI → kiểm tra tất định → duyệt → gửi SAP"
+    if lang == "VN" else
+    "Cortex AI抽出 → 検証 → レビュー → SAP転記"
+)
 
 # --- Document Processing Section (replaces Mendix portal) ---
 st.subheader("📤 Document Processing" if lang == "EN" else "📤 Xử lý Chứng từ" if lang == "VN" else "📤 書類処理")
@@ -39,6 +47,7 @@ with proc_col1:
 with proc_col2:
     if st.button(
         "⚡ Ingest & Decide (Full Pipeline)" if lang == "EN" else "⚡ Nhập & Quyết định (Pipeline đầy đủ)" if lang == "VN" else "⚡ 取込＆判定",
+        type="primary",
         use_container_width=True
     ):
         with st.spinner("Extract → Promote → Detect → Investigate → Screen → Decide..."):
@@ -74,32 +83,35 @@ st.divider()
 # --- Extracted Documents Review ---
 st.subheader("📋 Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 抽出書類")
 try:
-    # Text columns are COALESCEd to an em dash here rather than being cleaned up in
-    # pandas: a NULL VARCHAR arrives as a Python None and Streamlit renders that as
-    # the word "None", which reads like extracted data rather than missing data.
-    # Doing it in SQL also avoids DataFrame.fillna() casting the numeric columns to
-    # object dtype, which would break their right-alignment and sorting.
+    # Missing values are rendered as an em dash by ui.display_df rather than being
+    # COALESCEd per column here. Streamlit prints a Python None as the literal text
+    # "None", which in a shipping table reads like an extracted value instead of
+    # absent data, and this app now has one shared mechanism for that everywhere.
+    #
+    # "Date of issue" is DATE_OF_ISSUE, the date the bill of lading was issued. It
+    # was previously labelled "Arrival date", which is a different and unrelated
+    # milestone and would mislead anyone reading the table.
     extracted_df = session.sql("""
         SELECT DOC_ID,
-               COALESCE(CONTAINER_NUMBER, '—')            as "Container number",
-               COALESCE(VESSEL_NAME, '—')                 as "Vessel name",
-               COALESCE(TO_VARCHAR(DATE_OF_ISSUE), '—')   as "Arrival date",
-               GROSS_WEIGHT_KG                            as "Gross weight",
-               CONFIDENCE_SCORE                           as "AI Confidence score",
-               COALESCE(STATUS, '—')                      as "Status",
-               COALESCE(BL_NUMBER, '—')                   as "BL Number",
-               COALESCE(SHIPPER_NAME, '—')                as "Shipper",
-               COALESCE(ALERT, 'No anomalies detected')   as "Alert"
+               CONTAINER_NUMBER   as "Container number",
+               VESSEL_NAME        as "Vessel name",
+               DATE_OF_ISSUE      as "Date of issue",
+               GROSS_WEIGHT_KG    as "Gross weight",
+               CONFIDENCE_SCORE   as "AI Confidence score",
+               STATUS             as "Status",
+               BL_NUMBER          as "BL Number",
+               SHIPPER_NAME       as "Shipper",
+               ALERT              as "Alert"
         FROM BILL_OF_LADING_EXTRACTED
         ORDER BY PROCESSED_AT DESC NULLS LAST
         LIMIT 20
     """).to_pandas()
     if not extracted_df.empty:
-        st.dataframe(extracted_df, use_container_width=True)
+        ui.show_table(extracted_df)
     else:
-        st.info("No extracted documents yet." if lang == "EN" else "Chua co chung tu trich xuat.")
+        ui.empty_state("No extracted documents yet." if lang == "EN" else "Chưa có chứng từ trích xuất.")
 except Exception as e:
-    st.caption(f"Could not load extracted docs: {str(e)[:80]}")
+    ui.load_error("Extracted documents", e)
 
 # --- Review / Edit Document (replaces Mendix edit action) ---
 st.subheader("✏️ Review Document" if lang == "EN" else "✏️ Duyệt Chứng từ" if lang == "VN" else "✏️ 書類レビュー")
@@ -176,22 +188,33 @@ if doc_options:
             # Editable fields
             edit_container = st.text_input("Container number", value=doc['CONTAINER_NUMBER'] or '', key="ed_container")
             edit_vessel = st.text_input("Vessel name", value=doc['VESSEL_NAME'] or '', key="ed_vessel")
-            edit_date = st.text_input("Arrival date", value=str(doc['DATE_OF_ISSUE'] or ''), key="ed_date")
+            edit_date = st.text_input("Date of issue", value=str(doc['DATE_OF_ISSUE'] or ''), key="ed_date")
             edit_weight = st.text_input("Gross weight (kg)", value=str(doc['GROSS_WEIGHT_KG'] or ''), key="ed_weight")
 
             st.metric("AI Confidence", f"{doc['CONFIDENCE_SCORE'] or 0}/100")
 
-            # Status selector
-            status_options = ["Pending_Review", "AI_Processed", "Synced_To_SAP"]
-            current_idx = status_options.index(doc['STATUS']) if doc['STATUS'] in status_options else 0
-            edit_status = st.radio("Status", status_options, index=current_idx, key="ed_status", horizontal=True)
+            # STATUS is derived by the backend from the validation result and from
+            # whether a SAP document actually exists, so it is shown read-only.
+            # This used to be an st.radio, which was misleading twice over: the
+            # selected value was never passed to REVIEW_DOCUMENT, so the control
+            # did nothing at all, and it implied a reviewer could mark a flagged
+            # document as Synced_To_SAP by hand.
+            ui.readonly_field(
+                "Status",
+                doc['STATUS'] or ui.EM_DASH,
+                "Derived from validation state: a document with anomalies stays in "
+                "Pending_Review, and Synced_To_SAP requires a real SAP_FI_DOCUMENT."
+                if lang == "EN" else
+                "Suy ra từ kết quả kiểm tra: chứng từ có bất thường luôn ở "
+                "Pending_Review, và Synced_To_SAP bắt buộc phải có SAP_FI_DOCUMENT thật."
+            )
 
             st.markdown("---")
 
             # Action buttons
             btn_col1, btn_col2, btn_col3 = st.columns(3)
             with btn_col1:
-                if st.button("✅ Approve", key="btn_approve", use_container_width=True):
+                if st.button("✅ Approve", key="btn_approve", type="primary", use_container_width=True):
                     try:
                         import json
                         corrections = {}
@@ -205,6 +228,10 @@ if doc_options:
                             except ValueError:
                                 pass
                         if edit_date != str(doc['DATE_OF_ISSUE'] or ''):
+                            # The JSON key stays "arrival_date" because that is the
+                            # key REVIEW_DOCUMENT parses; only the on-screen label was
+                            # corrected to "Date of issue". Renaming the key here
+                            # would silently stop date corrections being applied.
                             corrections["arrival_date"] = edit_date
 
                         if corrections:
@@ -350,9 +377,9 @@ try:
         row_height = 35
         header_height = 38
         calculated_height = header_height + row_height * len(data) + 3
-        st.dataframe(data, use_container_width=True, height=calculated_height)
+        ui.show_table(data, height=calculated_height)
     else:
-        st.info(t["no_records_match"])
+        ui.empty_state(t["no_records_match"])
 except Exception as e:
     st.error(t["query_error"].format(err=str(e)[:150]))
 

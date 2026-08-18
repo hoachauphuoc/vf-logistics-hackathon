@@ -4,12 +4,18 @@ import json
 import datetime
 import pandas as pd
 from snowflake.snowpark.context import get_active_session
+from i18n import init_language
+import ui
 
 st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
 session = get_active_session()
 
-if "lang" not in st.session_state:
-    st.session_state.lang = "EN"
+# init_language() renders the sidebar language selector, the same control every
+# other page shows. This page previously only read st.session_state.lang, so
+# landing here directly left no way to change language until you visited another
+# page and came back. The page keeps its own TITLES/CAPTIONS dictionaries; only
+# the selector is shared.
+init_language()
 lang = st.session_state.lang
 
 TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Tro ly AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
@@ -23,6 +29,11 @@ LBL_YOU = {"EN": "You", "VN": "Ban", "JA": "あなた"}
 LBL_AI = {"EN": "AI Assistant", "VN": "Tro ly AI", "JA": "AIアシスタント"}
 
 # --- Styling: professional chat bubbles ---
+# The shared theme is applied first, then the chat-specific rules below extend it.
+# The bubble styling stays local to this page because nothing else renders a
+# conversation, and this page's persistence behaviour is already verified end to
+# end - the shared layer is additive here rather than a rewrite.
+ui.apply_theme()
 st.markdown("""
 <style>
 .chat-meta {
@@ -48,8 +59,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title(TITLES[lang])
-st.caption(CAPTIONS[lang])
+ui.page_header(TITLES[lang], CAPTIONS[lang])
 
 try:
     ai_model = session.sql(
@@ -545,7 +555,7 @@ for msg in st.session_state.chat_messages:
     if msg.get("content"):
         st.markdown(msg["content"])
     if msg.get("df") is not None:
-        st.dataframe(msg["df"], use_container_width=True)
+        ui.show_table(msg["df"])
     if msg.get("sql"):
         with st.expander("🔎 View generated SQL" if lang == "EN" else "🔎 Xem SQL"):
             st.code(msg["sql"], language="sql")

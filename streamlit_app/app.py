@@ -3,47 +3,32 @@ from snowflake.snowpark.context import get_active_session
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+from i18n import init_language
+import ui
 
 st.set_page_config(page_title="VF Logistics", page_icon="🚢", layout="wide")
 session = get_active_session()
 
-
-def safe_rerun():
-    # st.rerun() was added in Streamlit 1.27; the Streamlit-in-Snowflake warehouse
-    # runtime can ship an older bundled version that only has the now-deprecated
-    # st.experimental_rerun().
-    if hasattr(st, "rerun"):
-        st.rerun()
-    elif hasattr(st, "experimental_rerun"):
-        st.experimental_rerun()
-
-
-if "lang" not in st.session_state:
-    st.session_state.lang = "EN"
+# The language selector lives in the sidebar via init_language(), the same call
+# every other page makes. This page previously rendered its own st.selectbox in a
+# header column instead, which meant the control moved position when you
+# navigated from the home page to any sub-page, and the sidebar selector was
+# missing here entirely. One control, one place.
+init_language()
 lang = st.session_state.lang
 
-# Custom CSS
-st.markdown("""
-<style>
-.main-header {font-size: 2.4rem; font-weight: 700; background: linear-gradient(90deg, #00d2ff, #3a7bd5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0;}
-.sub-header {font-size: 1rem; color: #888; margin-bottom: 1.5rem;}
-div[data-testid="stMetricValue"] {font-size: 1.8rem; font-weight: 700;}
-div[data-testid="stMetric"] {background: rgba(28,131,225,0.05); border: 1px solid rgba(28,131,225,0.1); border-radius: 10px; padding: 12px 16px;}
-.plot-container {border-radius: 10px; overflow: hidden;}
-</style>
-""", unsafe_allow_html=True)
-
 # Header
-col_title, col_lang = st.columns([5, 1])
-with col_title:
-    titles = {"EN": "🚢 VF Logistics Command Center", "VN": "🚢 Trung tâm Điều hành VF Logistics", "JA": "🚢 VF Logistics コマンドセンター"}
-    st.markdown(f'<div class="main-header">{titles[lang]}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-header">Real-time maritime logistics intelligence • Snowflake Cortex AI • CoCo CLI Hackathon 2026</div>', unsafe_allow_html=True)
-with col_lang:
-    new_lang = st.selectbox("🌐", ["EN", "VN", "JA"], index=["EN","VN","JA"].index(lang), label_visibility="collapsed")
-    if new_lang != lang:
-        st.session_state.lang = new_lang
-        safe_rerun()
+titles = {
+    "EN": "🚢 VF Logistics Command Center",
+    "VN": "🚢 Trung tâm Điều hành VF Logistics",
+    "JA": "🚢 VF Logistics コマンドセンター",
+}
+subtitles = {
+    "EN": "Real-time maritime logistics intelligence • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
+    "VN": "Thông tin logistics hàng hải thời gian thực • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
+    "JA": "リアルタイム海運ロジスティクス • Snowflake Cortex AI • CoCo CLI Hackathon 2026",
+}
+ui.page_header(titles[lang], subtitles[lang])
 
 # KPI Section with loading
 with st.spinner("Loading KPIs..." if lang == "EN" else "Đang tải..."):
@@ -89,20 +74,17 @@ with chart_col1:
         carrier_revenue = carrier_df["REVENUE"].astype(float).tolist()
         carrier_shipments = carrier_df["SHIPMENTS"].astype(int).tolist()
         n = len(carrier_names)
-        shades = [f"rgba(58,123,213,{0.35 + 0.65*i/max(n-1,1)})" for i in range(n)]
         fig = go.Figure(go.Bar(
-            x=carrier_names, y=carrier_revenue, marker_color=shades,
+            x=carrier_names, y=carrier_revenue, marker_color=ui.accent_ramp(n),
             customdata=carrier_shipments,
             hovertemplate="Carrier: %{x}<br>Revenue: $%{y:,.0f}<br>Shipments: %{customdata}<extra></extra>"
         ))
-        fig.update_layout(height=350, margin=dict(t=10,b=10,l=10,r=10),
-                         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                         font_color='#ccc', showlegend=False,
-                         xaxis_title="Carrier", yaxis_title="Revenue (USD)")
+        fig.update_layout(**ui.chart_layout(height=350, xaxis_title="Carrier",
+                                            yaxis_title="Revenue (USD)"))
         fig.update_xaxes(tickangle=45, categoryorder="array", categoryarray=carrier_names)
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.warning(f"Chart error: {str(e)[:60]}")
+        ui.load_error("Revenue by carrier", e)
 
 with chart_col2:
     st.subheader("📊 Shipment Status Distribution")
@@ -118,12 +100,11 @@ with chart_col2:
             marker=dict(colors=px.colors.sequential.Blues_r[:len(status_labels)]),
             hovertemplate="%{label}: %{value} (%{percent})<extra></extra>"
         ))
-        fig.update_layout(height=350, margin=dict(t=10,b=10,l=10,r=10),
-                         paper_bgcolor='rgba(0,0,0,0)', font_color='#ccc')
+        fig.update_layout(**ui.chart_layout(height=350, showlegend=True))
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.warning(f"Chart error: {str(e)[:60]}")
+        ui.load_error("Status distribution", e)
 
 st.divider()
 
@@ -143,24 +124,28 @@ with chart_col3:
             weeks = weekly_df["WEEK"].astype(str).tolist()
             shipments = weekly_df["SHIPMENTS"].astype(int).tolist()
             revenue = weekly_df["REVENUE"].astype(float).tolist()
-            revenue_100 = [r / 100 for r in revenue]
             fig = go.Figure()
             fig.add_trace(go.Bar(x=weeks, y=shipments,
-                                name="Shipments", marker_color='#3a7bd5', opacity=0.7,
+                                name="Shipments", marker_color=ui.BRAND_BLUE, opacity=0.75,
                                 hovertemplate="Week: %{x}<br>Shipments: %{y}<extra></extra>"))
-            fig.add_trace(go.Scatter(x=weeks, y=revenue_100,
-                                    name="Revenue/100", line=dict(color='#00d2ff', width=3),
+            # Revenue is plotted on its own axis at its true magnitude. It was
+            # previously divided by 100 and the axis was labelled "Revenue/100",
+            # which leaked a plotting workaround into the UI and forced the
+            # reader to do arithmetic. A secondary axis with a compact tick
+            # format shows the real number.
+            fig.add_trace(go.Scatter(x=weeks, y=revenue,
+                                    name="Revenue", line=dict(color=ui.BRAND_CYAN, width=3),
                                     yaxis="y2",
-                                    customdata=revenue,
-                                    hovertemplate="Week: %{x}<br>Revenue: $%{customdata:,.0f}<extra></extra>"))
-            fig.update_layout(height=350, margin=dict(t=10,b=10,l=10,r=10),
-                             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                             font_color='#ccc', legend=dict(orientation="h", y=1.1),
-                             yaxis=dict(title="Shipments"),
-                             yaxis2=dict(overlaying='y', side='right', showgrid=False, title="Revenue/100"))
+                                    hovertemplate="Week: %{x}<br>Revenue: $%{y:,.0f}<extra></extra>"))
+            fig.update_layout(**ui.chart_layout(
+                height=350, showlegend=True,
+                legend=dict(orientation="h", y=1.12, x=0),
+                yaxis=dict(title="Shipments", gridcolor="rgba(139,148,158,0.12)"),
+                yaxis2=dict(title="Revenue (USD)", overlaying='y', side='right',
+                            showgrid=False, tickformat="$~s")))
             st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.warning(f"Chart error: {str(e)[:60]}")
+        ui.load_error("Weekly volume", e)
 
 with chart_col4:
     st.subheader("🌍 Top Routes (Origin → Destination)")
@@ -176,20 +161,16 @@ with chart_col4:
             routes = route_df["ROUTE"].tolist()
             shipments = route_df["SHIPMENTS"].tolist()
             revenue = route_df["REVENUE"].tolist()
-            n = len(routes)
-            shades = [f"rgba(58,123,213,{0.35 + 0.65*i/max(n-1,1)})" for i in range(n)]
             fig = go.Figure(go.Bar(
-                x=shipments, y=routes, orientation='h', marker_color=shades,
+                x=shipments, y=routes, orientation='h', marker_color=ui.accent_ramp(len(routes)),
                 customdata=revenue,
                 hovertemplate="Route: %{y}<br>Shipments: %{x}<br>Revenue: $%{customdata:,.0f}<extra></extra>"
             ))
-            fig.update_layout(height=350, margin=dict(t=10,b=10,l=10,r=10),
-                             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                             font_color='#ccc', xaxis_title="Shipments")
+            fig.update_layout(**ui.chart_layout(height=350, xaxis_title="Shipments"))
             fig.update_yaxes(categoryorder="array", categoryarray=routes[::-1])
             st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.warning(f"Chart error: {str(e)[:60]}")
+        ui.load_error("Top routes", e)
 
 st.divider()
 
@@ -202,7 +183,7 @@ with mk1:
     try:
         fx = session.sql("SELECT QUOTE_CURRENCY_ID as CCY, EXCHANGE_RATE as RATE FROM V_EXCHANGE_RATES ORDER BY 1").to_pandas()
         if not fx.empty:
-            st.dataframe(fx.set_index("CCY"), height=200, use_container_width=True)
+            ui.show_table(fx.set_index("CCY"), height=200)
     except:
         st.info("FX unavailable")
 
