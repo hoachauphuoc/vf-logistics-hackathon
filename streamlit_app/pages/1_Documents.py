@@ -9,8 +9,133 @@ lang = st.session_state.lang
 
 st.title(t["bl_explorer_title"])
 
+# --- PDF Upload & Process Section (replaces Mendix portal) ---
+st.subheader("📤 Upload & Process Documents" if lang == "EN" else "📤 Tải lên & Xử lý Chứng từ" if lang == "VN" else "📤 書類アップロード＆処理")
+
+upload_col, action_col = st.columns([3, 2])
+
+with upload_col:
+    uploaded_files = st.file_uploader(
+        "Upload Bill of Lading PDFs" if lang == "EN" else "Tải lên PDF Vận đơn" if lang == "VN" else "B/L PDFをアップロード",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="pdf_uploader"
+    )
+
+    if uploaded_files:
+        st.info(f"{len(uploaded_files)} file(s) selected" if lang == "EN" else f"{len(uploaded_files)} tệp đã chọn")
+
+with action_col:
+    st.markdown("")
+    st.markdown("")
+
+    if uploaded_files:
+        if st.button(
+            "📥 Upload & Run Pipeline" if lang == "EN" else "📥 Tải lên & Chạy Pipeline" if lang == "VN" else "📥 アップロード＆パイプライン実行",
+            type="primary", use_container_width=True
+        ):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            # Step 1: Upload files to stage
+            status_text.text("Uploading to stage..." if lang == "EN" else "Đang tải lên stage...")
+            upload_count = 0
+            for i, f in enumerate(uploaded_files):
+                try:
+                    session.file.put_stream(
+                        f, f"@MENDIX_APP.AGENTS.LOGISTICS_STAGE/{f.name}",
+                        auto_compress=False, overwrite=True
+                    )
+                    upload_count += 1
+                except Exception as e:
+                    st.warning(f"Upload failed for {f.name}: {str(e)[:80]}")
+                progress_bar.progress((i + 1) / (len(uploaded_files) + 2))
+
+            # Step 2: Process documents (OCR + extraction + validation)
+            status_text.text("Processing documents with AI..." if lang == "EN" else "Đang xử lý chứng từ bằng AI...")
+            progress_bar.progress(len(uploaded_files) / (len(uploaded_files) + 2))
+            try:
+                result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
+                progress_bar.progress(1.0)
+                status_text.empty()
+                st.success(
+                    f"Done! Uploaded {upload_count} files. Result: {result}"
+                    if lang == "EN" else
+                    f"Hoàn tất! Đã tải {upload_count} tệp. Kết quả: {result}"
+                )
+
+                # Show extraction results
+                with st.expander("Extraction Results" if lang == "EN" else "Kết quả trích xuất" if lang == "VN" else "抽出結果"):
+                    recent = session.sql("""
+                        SELECT FILE_NAME, BL_NUMBER, VESSEL_NAME, CONFIDENCE_SCORE, STATUS, ALERT
+                        FROM BILL_OF_LADING_EXTRACTED
+                        ORDER BY PROCESSED_AT DESC LIMIT 10
+                    """).to_pandas()
+                    if not recent.empty:
+                        st.dataframe(recent, use_container_width=True)
+            except Exception as e:
+                progress_bar.progress(1.0)
+                status_text.empty()
+                st.error(f"Processing error: {str(e)[:200]}")
+
+    else:
+        if st.button(
+            "🔄 Re-process Stage" if lang == "EN" else "🔄 Xử lý lại Stage" if lang == "VN" else "🔄 ステージ再処理",
+            use_container_width=True
+        ):
+            with st.spinner("Processing new files on stage..." if lang == "EN" else "Đang xử lý file mới trên stage..."):
+                try:
+                    result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
+                    st.success(result)
+                except Exception as e:
+                    st.error(f"Error: {str(e)[:200]}")
+
+    # Ingest & Decide (full pipeline from upload to AI decision)
+    if st.button(
+        "⚡ Ingest & Decide (Full)" if lang == "EN" else "⚡ Nhập & Quyết định (Đầy đủ)" if lang == "VN" else "⚡ 取込＆判定（全工程）",
+        use_container_width=True
+    ):
+        with st.spinner("Extract → Promote → Detect → Investigate → Screen → Decide..." if lang == "EN" else "Trích xuất → Đưa vào → Phát hiện → Điều tra → Sàng lọc → Quyết định..."):
+            try:
+                result = session.sql("CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE()").collect()[0][0]
+                st.success("Pipeline completed!" if lang == "EN" else "Hoàn tất pipeline!")
+                import json
+                try:
+                    parsed = json.loads(result)
+                    c1, c2 = st.columns(2)
+                    c1.metric("AI Decision" if lang == "EN" else "Quyết định AI", parsed.get("pipeline", {}).get("ai_decision", "N/A"))
+                    c2.metric("Time (ms)", parsed.get("total_ms", "N/A"))
+                except Exception:
+                    st.code(result, language="json")
+            except Exception as e:
+                st.error(f"Error: {str(e)[:200]}")
+
+st.divider()
+
+# --- Extracted Documents Review ---
+st.subheader("📋 Recently Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 最近の抽出書類")
+try:
+    extracted_df = session.sql("""
+        SELECT DOC_ID, FILE_NAME, BL_NUMBER, VESSEL_NAME, SHIPPER_NAME, 
+               CONFIDENCE_SCORE, STATUS, ALERT, PROCESSED_AT
+        FROM BILL_OF_LADING_EXTRACTED
+        ORDER BY PROCESSED_AT DESC NULLS LAST
+        LIMIT 20
+    """).to_pandas()
+    if not extracted_df.empty:
+        st.dataframe(extracted_df, use_container_width=True)
+    else:
+        st.info("No extracted documents yet. Upload PDFs above to start." if lang == "EN" else "Chưa có chứng từ trích xuất. Hãy tải PDF ở trên.")
+except Exception as e:
+    st.caption(f"Could not load extracted docs: {str(e)[:80]}")
+
+st.divider()
+
+# --- Bill of Lading Explorer (existing) ---
+st.subheader("🔍 Bill of Lading Explorer" if lang == "EN" else "🔍 Tra cứu Vận đơn" if lang == "VN" else "🔍 B/L検索")
+
 # Filters
-with st.expander(t["filters"], expanded=True):
+with st.expander(t["filters"], expanded=False):
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
         try:
@@ -80,7 +205,6 @@ try:
 
     if not data.empty:
         data = rename_columns(data, lang)
-        # Size the grid to fit all rows on the page so no internal scroll is needed
         row_height = 35
         header_height = 38
         calculated_height = header_height + row_height * len(data) + 3
@@ -119,10 +243,3 @@ if do_search and semantic_query:
             st.info(t["no_results_found"])
     except Exception as e:
         st.warning(t["search_error"].format(err=str(e)[:100]))
-
-# Bulk actions
-st.divider()
-st.subheader(t["quick_actions"])
-st.caption(t["readonly_notice"])
-if st.button(t["refresh_index"], use_container_width=True):
-    st.info(t["refresh_index_info"])
