@@ -13,7 +13,8 @@
 > The entire application runs natively inside Snowflake — no external dependencies. The Streamlit app is the **single unified interface** for document upload, AI processing, fraud detection, compliance monitoring, and conversational AI chat.
 
 **Key capabilities (all inside Streamlit):**
-- **Document Upload & AI Processing** — Upload Bill of Lading PDFs directly via the Documents page; Cortex AI extracts fields, validates, and promotes to the operational table
+- **AI Document Processing** — One-click `Process New PDFs on Stage` triggers Cortex AI field extraction, validation, and promotion to the operational table (PDFs are staged via Snowsight — see *Known Limitations*)
+- **Human-in-the-loop Review & Edit** — Select any extracted document to inspect AI output side-by-side with editable fields (container, vessel, arrival date, gross weight), then Approve / Reject / Sync to SAP. Edits are persisted through `REVIEW_DOCUMENT` with a full audit trail
 - **AI Chat with Session Persistence** — Natural language queries over logistics data, with conversation history maintained throughout the session
 - **Autonomous Pipeline Execution** — Run the full detect → investigate → screen → remediate → SAP post workflow from the UI
 - **Real-time Analytics** — Carrier revenue, shipment status, weekly trends, FX rates, sanctions screening, AI usage/cost monitoring
@@ -24,7 +25,7 @@ Important notes for judges:
 - Every detection, AI decision, audit log entry, and ERP post is made inside Snowflake — no external runtime
 - **Reviewer access**: a read-only role `HACKATHON_JUDGE_ROLE` is available; contact the team for credentials
 
-> **Note on Mendix**: The original submission included a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), all functionality has been consolidated into the native Streamlit app. The Mendix integration code is retained in `mendix-integration/` as reference for the JDBC key-pair auth pattern, but it is no longer the primary interface.
+> **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture** — it is not deployed and is not required to run the solution. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) now lives in the Streamlit app. The `mendix-integration/` folder is retained purely as reference for the JDBC key-pair auth pattern. See *Known Limitations* in Section 11 for the two UX trade-offs this consolidation introduced.
 
 ## 1. Problem & Business Impact
 
@@ -51,11 +52,20 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
 ## 2. Architecture
 
 ```
-                    ┌─────────────────────────────┐
-   CoCo CLI /        │   Cortex Agent               │
-   Natural Language ─▶  VF_LOGISTICS_AGENT           │
-   or Direct SQL/CLI │  (5 tools: query, search,    │
-   or Python/Snowpark│   fraud_scan, investigate,   │
+  ENTRY POINTS (all inside Snowflake — no external runtime)
+  ┌────────────────────────────────────────────────────────────┐
+  │ Streamlit-in-Snowflake   VF_LOGISTICS_DASHBOARD            │
+  │  Dashboard │ Documents (review/edit/approve) │ Compliance  │
+  │  Fraud Detection │ AI FinOps │ AI Chat (session history)   │
+  └────────────────────────────────────────────────────────────┘
+    CoCo CLI / Natural Language │ Direct SQL │ Python/Snowpark
+                                      │
+                                      ▼
+                      ┌──────────────────────────────┐
+                      │   Cortex Agent               │
+                      │   VF_LOGISTICS_AGENT         │
+                      │   (5 tools: query, search,   │
+                      │   fraud_scan, investigate,   │
                       │   take_action)               │
                       └───────────────┬──────────────┘
                                       │
@@ -80,7 +90,7 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
 
 **Snowflake features used**: Cortex Agent, Cortex AI (`COMPLETE` — mistral-large2), Cortex Analyst (text-to-SQL), Cortex Search (semantic BL search), Snowflake Marketplace (real US government export-screening data + FX rates), Dynamic Tables, Streams + Tasks, Streamlit.
 
-**Languages used**: SQL (core workflow logic), **Python** (Snowpark risk scoring + Streamlit dashboard), **Java** (Mendix integration — reference only, not primary interface).
+**Languages used**: SQL (core workflow logic), **Python** (Snowpark risk scoring + Streamlit-in-Snowflake app — the sole user interface), **Java** (`mendix-integration/`, reference only — not deployed, not required to run the solution).
 
 ---
 
@@ -110,7 +120,7 @@ If you are reproducing this on the author's workstation, note that the local `sn
 `WORKFLOW_INGEST_AND_DECIDE` chains three stages and logs each one:
 `PROCESS_BL_DOCUMENTS` (OCR + AI extraction of every new PDF) → `SYNC_EXTRACTED_TO_BILL_OF_LADING` (promote the documents into the operational table) → `WORKFLOW_FULL_PIPELINE_V2` (detect → investigate → screen → AI-decided remediation → ERP posting).
 
-The **Mendix chat panel and Python/Snowpark call this same procedure**, so every interface executes identical logic.
+The **Streamlit UI (Documents page and AI Chat sidebar), the Cortex Agent, and Python/Snowpark all call this same procedure**, so every interface executes identical logic.
 
 Fully hands-off operation is one statement away — a stream on the stage already feeds a task:
 ```sql
@@ -152,9 +162,9 @@ python python/snowpark_risk_scoring.py --connection dpyxiqz-fn71223 --run-workfl
  "execution_time_ms":13392,"audit_trail":"WORKFLOW_AUDIT_LOG"}
 ```
 
-### Option F — From the Mendix UI itself (no CLI access needed)
+### Option F — From the Streamlit UI itself (no CLI access needed)
 
-A judge who only has the public Mendix link (Section 0) can still trigger the exact same CLI-executed workflow, with no Snowflake login: open the **AI Assistant** chat panel (bottom-right of the Mendix homepage) and type `/run_pipeline`. Behind the scenes the panel shells out to the identical command as Option B — `snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');"` — and streams back the same step-by-step result (`STEP 1/5 DETECT_ANOMALIES` … `STEP 5/5 SAP_POST`, then the raw JSON output and the alert/decision it produced). This is the same orchestrator and the same audit trail as every other option on this page; the Mendix chat is just one more caller of it, not a separate code path.
+A judge with only Snowsight access can trigger the exact same workflow with no CLI: open the `VF_LOGISTICS_DASHBOARD` Streamlit app and use either the **Documents** page (**Ingest & Decide** runs `WORKFLOW_INGEST_AND_DECIDE()`), the **Fraud Detection** page (runs `WORKFLOW_FULL_PIPELINE_V2('AUTO')`), or the **AI Chat** sidebar (**Run Full Pipeline**). All three call the identical orchestrator as Option B and write to the same `WORKFLOW_AUDIT_LOG` — the UI is one more caller of the backend, not a separate code path. The AI Chat page additionally accepts free-form questions and answers them by generating and executing SQL against the same tables.
 
 Trace a single PDF from file to decision:
 ```sql
@@ -203,8 +213,19 @@ vf-logistics-hackathon/
 │       └── CREDIT_MONITORING_GUIDE.md
 ├── python/
 │   └── snowpark_risk_scoring.py    Python/Snowpark risk scoring + orchestration
-├── mendix-integration/
-│   └── CallCortexAgent.java        Mendix Java action (JDBC → Snowflake)
+├── mendix-integration/              Reference only — not deployed
+│   └── CallCortexAgent.java        Historical Mendix Java action (JDBC → Snowflake)
+├── ../streamlit_app/                ** The application (deployed to SiS) **
+│   ├── app.py                      Main dashboard (KPIs, carrier revenue, trends, FX)
+│   ├── environment.yml             Declares the plotly dependency for SiS
+│   ├── i18n.py                     EN / VN / JA translations
+│   └── pages/
+│       ├── 1_Documents.py          AI processing + human-in-the-loop review & edit
+│       ├── 2_Compliance.py         Compliance checks
+│       ├── 3_Fraud_Detection.py    Alerts + pipeline execution
+│       ├── 4_AI_FinOps.py          AI usage & cost monitoring
+│       ├── 5_Settings.py           Language / model settings
+│       └── 6_AI_Chat.py            Conversational AI with session history
 └── ../docs/reference/
     ├── TEST_REPORT_FINAL_2026-08-01.md   Final end-to-end validation (current)
     └── TEST_REPORT_SOLUTION.md          Earlier validation run (2026-07-27, superseded)
@@ -214,7 +235,8 @@ vf-logistics-hackathon/
 
 ## 6. Setup / Deployment Notes
 
-- **Mendix integration**: `CallCortexAgent.java` authenticates to Snowflake with **key-pair (JWT) authentication** — `authenticator=SNOWFLAKE_JWT` plus a private key file (`snowflake_key.p8`) read from the Mendix runtime resources directory at request time. No password or key material is present in the source or in this repository (`*.p8` and `*.pem` are git-ignored); only the public key is registered on the Snowflake service user. This replaced an earlier password-based approach — see `COMPLIANCE_CHECKLIST.md` Section 5 for that history.
+- **Streamlit deployment**: the app is deployed as `MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD` from `@MENDIX_APP.AGENTS.STREAMLIT_STAGE`. `environment.yml` must sit in the **stage root** (not in `pages/`) for SiS to install `plotly`; if it is missing the dashboard fails with `ModuleNotFoundError: No module named 'plotly'`. Redeploy after changing it so the environment is rebuilt.
+- **Mendix integration (reference only)**: `CallCortexAgent.java` authenticates to Snowflake with **key-pair (JWT) authentication** — `authenticator=SNOWFLAKE_JWT` plus a private key file (`snowflake_key.p8`) read from the Mendix runtime resources directory at request time. No password or key material is present in the source or in this repository (`*.p8` and `*.pem` are git-ignored); only the public key is registered on the Snowflake service user. This code is **not deployed and not needed to run the solution** — it is kept because the key-pair auth pattern is reusable for any external caller. This replaced an earlier password-based approach — see `COMPLIANCE_CHECKLIST.md` Section 5 for that history.
 - **Snowflake Marketplace dependency**: `WORKFLOW_SANCTIONS_SCREEN` requires the free "Snowflake Public Data (Free)" listing mounted as `SNOWFLAKE_PUBLIC_DATA_FREE`:
   ```sql
   CALL SYSTEM$REQUEST_LISTING_AND_WAIT('GZTSZ290BV255', 120);
@@ -250,7 +272,7 @@ Stated up front rather than left for a reviewer to discover:
 - **The triage queue is intentionally not empty.** Detection applies backpressure at a queue limit instead of draining to zero, so there is always live work for a reviewer to run the pipeline against. Roughly 83% of alerts raised so far have been AI-investigated; the remainder is the working queue.
 - **Two rows are deliberate adversarial test fixtures, and they are named as such.** `TESTFIXTURE-SHELLCO-01/02` carry shell-company counterparty names so the `SUSPICIOUS_PARTY` detection rule and the name-based BLOCK branch of the rubric are actually exercised. They are labelled in `REMARKS` rather than disguised as organic shipments. A previous scripted helper that seeded such rows on demand (`DEMO_PIPELINE()`) has been dropped from the database.
 - **Scheduled tasks ship suspended** to protect trial credits; the pipeline is triggered on demand. One `ALTER TASK ... RESUME` makes it fully hands-off.
-- **Mendix contributes no business logic.** It authenticates as a least-privilege service user, calls one procedure, and renders the result. Every decision is made inside Snowflake.
+- **The UI contributes no business logic.** The Streamlit app calls procedures and renders results; every decision is made inside Snowflake. This was equally true of the removed Mendix portal, which is why consolidating into Streamlit changed no backend behaviour.
 
 ---
 
@@ -274,7 +296,7 @@ For criterion 1 specifically (**use of Cortex Code CLI**), see [`docs/COCO_CLI_E
 5. **CLI-native execution** — the exact same workflow runs identically via SQL CLI, CoCo CLI (natural language), and Python/Snowpark
 6. **Real third-party data integration** — screening runs against a real US government export-screened-entities dataset obtained from Snowflake Marketplace (listing `GZTSZ290BV255`), not a mocked list. The data is genuinely third-party, but it is **not continuously refreshed**: the provider's current table is empty and its point-in-time table stops at 2024-04-10, so the screening list is a real historical government snapshot rather than a live feed. `V_SANCTIONS_SCREENING_SOURCE` reports which basis each match came from (`RECORD_BASIS`) and automatically prefers the provider's current table if it is ever repopulated — so the freshness of this dependency is visible instead of assumed.
 7. **Full audit trail with explanations** — every step is logged to `WORKFLOW_AUDIT_LOG` with the AI decision and reason recorded inline, so a compliance reviewer can see *why* a shipment was blocked or cleared, not just that something happened
-8. **Production-shaped**: defensive error handling (`LIMIT 1` on SELECT INTO, AI retry wrapper, graceful skip when no alert qualifies, sanctions-lookup fallback), built on a real Mendix front-end with JDBC integration
+8. **Production-shaped**: defensive error handling (`LIMIT 1` on SELECT INTO, AI retry wrapper, graceful skip when no alert qualifies, sanctions-lookup fallback), surfaced through a native Streamlit-in-Snowflake front-end with human-in-the-loop review and approval
 9. **Demo-ready analytics UI**: the Streamlit dashboard was browser-verified and includes a dedicated *Autonomous AI Decisions* panel exposing every decision, its reason, and the full model risk assessment
 
 ---
@@ -310,19 +332,64 @@ After being shortlisted, 3 evaluator feedback items were addressed:
 - Auto-sync merged: `SYNC_EXTRACTED_TO_BILL_OF_LADING()` is now called automatically at the end of `PROCESS_BL_DOCUMENTS`, eliminating the need for a separate sync step
 
 ### Fix 2: Merge External Sandbox Portal with Native Streamlit
-- **Mendix removed as primary interface** — all functionality consolidated into Streamlit-in-Snowflake
-- Added **PDF Upload** to Documents page: `st.file_uploader` → PUT to `@LOGISTICS_STAGE` → `CALL PROCESS_BL_DOCUMENTS()`
+- **Mendix removed as the interface** — all operator functionality consolidated into Streamlit-in-Snowflake
+- Added **Process New PDFs on Stage** button: `CALL PROCESS_BL_DOCUMENTS()` runs Cortex extraction + auto-sync from the UI
 - Added **Ingest & Decide** button: triggers full `WORKFLOW_INGEST_AND_DECIDE()` from the UI
-- Added **Extracted Documents Review** panel showing recent AI extraction results with confidence scores
+- Added a **Review & Edit panel** that replicates the former Mendix edit screen: two-column layout with AI-extracted document details on the left and editable fields (container number, vessel name, arrival date, gross weight) on the right, plus AI-confidence display, anomaly alert, and **Approve / Reject / Sync to SAP** actions wired to `REVIEW_DOCUMENT` and `SAP_POST_FI_DOCUMENT`
+- Corrections are diffed against the AI output, so pressing Approve after editing automatically submits a `CORRECT` action carrying only the changed fields
 - Pipeline can also be triggered from the AI Chat sidebar
 
 ### Fix 3: Redesigned Chat Interface with Session History Persistence
-- Redesigned `6_AI_Chat.py` using native `st.chat_message` / `st.chat_input` components for proper conversational UX
-- Chat history persists in `st.session_state.chat_messages` throughout the session
-- Sidebar includes quick-question buttons and a "Run Full Pipeline" button
-- Pipeline results are displayed inline in the chat conversation
+- Rebuilt `6_AI_Chat.py` as a true conversational interface: full transcript re-rendered on every turn, with user and assistant turns visually distinguished
+- Chat history persists in `st.session_state.chat_messages` for the whole session, so context is retained across questions
+- Intent classification routes each message either to a conversational answer or to generated SQL executed against the warehouse
+- Sidebar includes quick-question buttons, a **Run Full Pipeline** button, and **Clear Chat**
+- Every Cortex call is logged to `AI_CALL_LOG` for cost/usage attribution
+- Implemented with `st.text_input` + `st.markdown` rather than `st.chat_message`/`st.chat_input`, because the SiS runtime is Streamlit 1.22 (see *Known Limitations*)
+
+### Known Limitations (Streamlit-in-Snowflake runtime 1.22)
+These are platform constraints of the SiS runtime, not defects in the solution. They are documented here rather than hidden, since two of them are visible trade-offs versus the removed Mendix UI:
+
+| Constraint | Impact | Workaround in this build |
+|---|---|---|
+| `st.file_uploader` unavailable (added in Streamlit 1.26) | Cannot upload a PDF from inside the app | PDFs are staged via Snowsight → **Ingestion → Load files into a Stage** → `LOGISTICS_STAGE` / `bill_of_lading/`, then processed with one click in the app |
+| SiS executes server-side, so `PUT file://<local path>` cannot reach the client filesystem | No path-based upload button | Same as above |
+| Sandbox blocks `<embed>`/`<iframe>` of external URLs | PDF cannot be previewed inline as it was in Mendix | `GET_PDF_URL` issues a fresh 1-hour presigned S3 URL as a download link |
+| Snowflake internal stages do not serve `Content-Type: application/pdf` | Browser downloads the PDF instead of rendering it in a tab | Accepted; link is labelled as a download |
+| `st.chat_message` / `st.chat_input` unavailable | Cannot use native chat widgets | Equivalent UX built from `st.text_input` + `st.markdown` with session-state history |
+
+Upload ergonomics are the one area where the native app is a step back from the removed Mendix portal. The trade-off was accepted deliberately: the whole system now runs inside Snowflake with no external runtime, server, Java action, or API credential to maintain. When the SiS runtime advances to 1.26+, in-app upload becomes a `st.file_uploader` call plus a `PUT` to the existing stage — no architectural change.
+
+### Verification (2026-08-18 audit)
+Full solution audit run against `DPYXIQZ-FN71223`:
+
+| Check | Result |
+|---|---|
+| Tables / views | 31 / 11 — all 11 views queried successfully |
+| Procedures / functions | 46 / 6 |
+| `BILL_OF_LADING` rows | 10,017 |
+| Cortex Search `BL_SEARCH_SERVICE` | ACTIVE (indexing + serving), 10,017 rows |
+| `PROCESS_BL_DOCUMENTS()` | Returns `{"processed":0,"errors":0,"synced":true}` — no unprocessed files, auto-sync confirmed |
+| `REVIEW_DOCUMENT(...,'CORRECT',...)` | Returns success; corrections persisted and status advanced |
+| `WORKFLOW_FULL_PIPELINE_V2('AUTO')` | Completed, 1 alert processed, AI decision `CLEAR`, SAP posted, 15.1s |
+| `CHAT_WITH_DATA(...)` | Returns natural-language answer |
+| `GET_PDF_URL(402)` | Returns valid presigned URL |
+| Stage PDFs | 15 files restored to `@LOGISTICS_STAGE/bill_of_lading/` and registered |
+
+Two issues were found and fixed during this audit:
+- **Stage PDFs were missing after account migration** — only CSV data had been restored, so `GET_PDF_URL` returned working URLs that resolved to S3 `NoSuchKey`. All 15 PDFs were re-uploaded and `ALTER STAGE ... REFRESH` was run.
+- **Stale presigned URLs were being served from cache** — `PDF_PRESIGNED_URL` held expired links from the previous account. The cache was cleared and the Documents page now always requests a fresh URL via `GET_PDF_URL`.
+
+**Note:** all 7 scheduled tasks are currently `suspended` (deliberate, to conserve trial credits). Resume them with:
+```sql
+ALTER TASK MENDIX_APP.AGENTS.TASK_FRAUD_SCAN RESUME;
+ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL RESUME;
+-- etc. for TASK_COMPLIANCE_CHECK, TASK_AI_EXPLAIN_ANOMALY,
+--        TASK_NOTIFY_HIGH_FRAUD, TASK_GENERATE_WEEKLY_INSIGHTS, TASK_REFRESH_PDF_URLS
+```
 
 ### Infrastructure
 - Migrated to new Snowflake trial account (`DPYXIQZ-FN71223`, expires 2026-09-04) with full schema, data, and all 46 procedures
+- Added `environment.yml` to the Streamlit stage root to declare the `plotly` dependency (fixes `ModuleNotFoundError` on the dashboard)
 - Generated new RSA key pair for `MENDIX_SERVICE_USER` key-pair JWT authentication
-- Mendix integration code retained in `mendix-integration/` as reference only (not the active entry point)
+- Mendix integration code retained in `mendix-integration/` as **reference only** — it is not deployed, not the entry point, and not required to run the solution. It documents the JDBC key-pair auth pattern for reviewers who want to see how the original external portal authenticated.

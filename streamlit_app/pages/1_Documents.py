@@ -9,93 +9,39 @@ lang = st.session_state.lang
 
 st.title(t["bl_explorer_title"])
 
-# --- PDF Upload & Process Section (replaces Mendix portal) ---
-st.subheader("📤 Upload & Process Documents" if lang == "EN" else "📤 Tải lên & Xử lý Chứng từ" if lang == "VN" else "📤 書類アップロード＆処理")
+# --- Document Processing Section (replaces Mendix portal) ---
+st.subheader("📤 Document Processing" if lang == "EN" else "📤 Xử lý Chứng từ" if lang == "VN" else "📤 書類処理")
 
-upload_col, action_col = st.columns([3, 2])
+st.info(
+    "**To upload new PDFs:** In Snowsight left menu → **Ingestion** → **Load files into a Stage** → "
+    "select `MENDIX_APP.AGENTS.LOGISTICS_STAGE` → path `bill_of_lading/` → drag & drop PDFs. "
+    "Then click **Process** below."
+    if lang == "EN" else
+    "**Để upload PDF mới:** Menu trái Snowsight → **Ingestion** → **Load files into a Stage** → "
+    "chọn `MENDIX_APP.AGENTS.LOGISTICS_STAGE` → path `bill_of_lading/` → kéo thả PDF. "
+    "Sau đó bấm **Xử lý** bên dưới."
+)
 
-with upload_col:
-    uploaded_files = st.file_uploader(
-        "Upload Bill of Lading PDFs" if lang == "EN" else "Tải lên PDF Vận đơn" if lang == "VN" else "B/L PDFをアップロード",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key="pdf_uploader"
-    )
+proc_col1, proc_col2 = st.columns(2)
 
-    if uploaded_files:
-        st.info(f"{len(uploaded_files)} file(s) selected" if lang == "EN" else f"{len(uploaded_files)} tệp đã chọn")
-
-with action_col:
-    st.markdown("")
-    st.markdown("")
-
-    if uploaded_files:
-        if st.button(
-            "📥 Upload & Run Pipeline" if lang == "EN" else "📥 Tải lên & Chạy Pipeline" if lang == "VN" else "📥 アップロード＆パイプライン実行",
-            type="primary", use_container_width=True
-        ):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            # Step 1: Upload files to stage
-            status_text.text("Uploading to stage..." if lang == "EN" else "Đang tải lên stage...")
-            upload_count = 0
-            for i, f in enumerate(uploaded_files):
-                try:
-                    session.file.put_stream(
-                        f, f"@MENDIX_APP.AGENTS.LOGISTICS_STAGE/{f.name}",
-                        auto_compress=False, overwrite=True
-                    )
-                    upload_count += 1
-                except Exception as e:
-                    st.warning(f"Upload failed for {f.name}: {str(e)[:80]}")
-                progress_bar.progress((i + 1) / (len(uploaded_files) + 2))
-
-            # Step 2: Process documents (OCR + extraction + validation)
-            status_text.text("Processing documents with AI..." if lang == "EN" else "Đang xử lý chứng từ bằng AI...")
-            progress_bar.progress(len(uploaded_files) / (len(uploaded_files) + 2))
-            try:
-                result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
-                progress_bar.progress(1.0)
-                status_text.empty()
-                st.success(
-                    f"Done! Uploaded {upload_count} files. Result: {result}"
-                    if lang == "EN" else
-                    f"Hoàn tất! Đã tải {upload_count} tệp. Kết quả: {result}"
-                )
-
-                # Show extraction results
-                with st.expander("Extraction Results" if lang == "EN" else "Kết quả trích xuất" if lang == "VN" else "抽出結果"):
-                    recent = session.sql("""
-                        SELECT FILE_NAME, BL_NUMBER, VESSEL_NAME, CONFIDENCE_SCORE, STATUS, ALERT
-                        FROM BILL_OF_LADING_EXTRACTED
-                        ORDER BY PROCESSED_AT DESC LIMIT 10
-                    """).to_pandas()
-                    if not recent.empty:
-                        st.dataframe(recent, use_container_width=True)
-            except Exception as e:
-                progress_bar.progress(1.0)
-                status_text.empty()
-                st.error(f"Processing error: {str(e)[:200]}")
-
-    else:
-        if st.button(
-            "🔄 Re-process Stage" if lang == "EN" else "🔄 Xử lý lại Stage" if lang == "VN" else "🔄 ステージ再処理",
-            use_container_width=True
-        ):
-            with st.spinner("Processing new files on stage..." if lang == "EN" else "Đang xử lý file mới trên stage..."):
-                try:
-                    result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
-                    st.success(result)
-                except Exception as e:
-                    st.error(f"Error: {str(e)[:200]}")
-
-    # Ingest & Decide (full pipeline from upload to AI decision)
+with proc_col1:
     if st.button(
-        "⚡ Ingest & Decide (Full)" if lang == "EN" else "⚡ Nhập & Quyết định (Đầy đủ)" if lang == "VN" else "⚡ 取込＆判定（全工程）",
+        "🔄 Process New PDFs on Stage" if lang == "EN" else "🔄 Xử lý PDF mới trên Stage" if lang == "VN" else "🔄 新規PDF処理",
         use_container_width=True
     ):
-        with st.spinner("Extract → Promote → Detect → Investigate → Screen → Decide..." if lang == "EN" else "Trích xuất → Đưa vào → Phát hiện → Điều tra → Sàng lọc → Quyết định..."):
+        with st.spinner("AI extracting fields from PDFs..." if lang == "EN" else "AI đang trích xuất..."):
+            try:
+                result = session.sql("CALL MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()").collect()[0][0]
+                st.success(result)
+            except Exception as e:
+                st.error(f"Error: {str(e)[:200]}")
+
+with proc_col2:
+    if st.button(
+        "⚡ Ingest & Decide (Full Pipeline)" if lang == "EN" else "⚡ Nhập & Quyết định (Pipeline đầy đủ)" if lang == "VN" else "⚡ 取込＆判定",
+        use_container_width=True
+    ):
+        with st.spinner("Extract → Promote → Detect → Investigate → Screen → Decide..."):
             try:
                 result = session.sql("CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE()").collect()[0][0]
                 st.success("Pipeline completed!" if lang == "EN" else "Hoàn tất pipeline!")
@@ -103,21 +49,36 @@ with action_col:
                 try:
                     parsed = json.loads(result)
                     c1, c2 = st.columns(2)
-                    c1.metric("AI Decision" if lang == "EN" else "Quyết định AI", parsed.get("pipeline", {}).get("ai_decision", "N/A"))
+                    c1.metric("AI Decision", parsed.get("pipeline", {}).get("ai_decision", "N/A") if isinstance(parsed.get("pipeline"), dict) else "Done")
                     c2.metric("Time (ms)", parsed.get("total_ms", "N/A"))
                 except Exception:
                     st.code(result, language="json")
             except Exception as e:
                 st.error(f"Error: {str(e)[:200]}")
 
+# Stage file count
+try:
+    stage_files = session.sql("""
+        SELECT COUNT(*) as CNT FROM DIRECTORY(@MENDIX_APP.AGENTS.LOGISTICS_STAGE)
+        WHERE RELATIVE_PATH ILIKE '%.pdf'
+    """).collect()[0]["CNT"]
+    extracted_count = session.sql("SELECT COUNT(*) as CNT FROM BILL_OF_LADING_EXTRACTED").collect()[0]["CNT"]
+    m1, m2 = st.columns(2)
+    m1.metric("PDFs on Stage" if lang == "EN" else "PDF trên Stage", stage_files)
+    m2.metric("Extracted Documents" if lang == "EN" else "Đã trích xuất", extracted_count)
+except Exception:
+    pass
+
 st.divider()
 
 # --- Extracted Documents Review ---
-st.subheader("📋 Recently Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 最近の抽出書類")
+st.subheader("📋 Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 抽出書類")
 try:
     extracted_df = session.sql("""
-        SELECT DOC_ID, FILE_NAME, BL_NUMBER, VESSEL_NAME, SHIPPER_NAME, 
-               CONFIDENCE_SCORE, STATUS, ALERT, PROCESSED_AT
+        SELECT DOC_ID, CONTAINER_NUMBER as "Container number", VESSEL_NAME as "Vessel name",
+               DATE_OF_ISSUE as "Arrival date", GROSS_WEIGHT_KG as "Gross weight",
+               CONFIDENCE_SCORE as "AI Confidence score", STATUS as "Status",
+               BL_NUMBER as "BL Number", SHIPPER_NAME as "Shipper", ALERT as "Alert"
         FROM BILL_OF_LADING_EXTRACTED
         ORDER BY PROCESSED_AT DESC NULLS LAST
         LIMIT 20
@@ -125,16 +86,166 @@ try:
     if not extracted_df.empty:
         st.dataframe(extracted_df, use_container_width=True)
     else:
-        st.info("No extracted documents yet. Upload PDFs above to start." if lang == "EN" else "Chưa có chứng từ trích xuất. Hãy tải PDF ở trên.")
+        st.info("No extracted documents yet." if lang == "EN" else "Chua co chung tu trich xuat.")
 except Exception as e:
     st.caption(f"Could not load extracted docs: {str(e)[:80]}")
 
+# --- Review / Edit Document (replaces Mendix edit action) ---
+st.subheader("✏️ Review Document" if lang == "EN" else "✏️ Duyệt Chứng từ" if lang == "VN" else "✏️ 書類レビュー")
+
+# Document selector
+try:
+    doc_ids = session.sql("""
+        SELECT DOC_ID, CONTAINER_NUMBER || ' - ' || COALESCE(VESSEL_NAME,'?') || ' (' || STATUS || ')' as LABEL
+        FROM BILL_OF_LADING_EXTRACTED ORDER BY DOC_ID DESC LIMIT 50
+    """).to_pandas()
+    doc_options = dict(zip(doc_ids["DOC_ID"].tolist(), doc_ids["LABEL"].tolist()))
+except Exception:
+    doc_options = {}
+
+if doc_options:
+    selected_doc = st.selectbox(
+        "Select document to review" if lang == "EN" else "Chọn chứng từ",
+        options=list(doc_options.keys()),
+        format_func=lambda x: f"DOC {x}: {doc_options.get(x, '')}",
+        key="doc_selector"
+    )
+
+    # Load document detail
+    try:
+        doc = session.sql(f"""
+            SELECT DOC_ID, FILE_NAME, BL_NUMBER, CONTAINER_NUMBER, VESSEL_NAME,
+                   DATE_OF_ISSUE, GROSS_WEIGHT_KG, CONFIDENCE_SCORE, STATUS,
+                   SHIPPER_NAME, CONSIGNEE_NAME, PORT_OF_LOADING, PORT_OF_DISCHARGE,
+                   FREIGHT_CHARGES, ALERT, ALERT_RESPONSE,
+                   PDF_PRESIGNED_URL
+            FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {selected_doc}
+        """).collect()[0]
+
+        # Two-column layout like Mendix
+        left_col, right_col = st.columns([1, 1])
+
+        with left_col:
+            st.markdown("**📄 Document Details**" if lang == "EN" else "**📄 Chi tiết Chứng từ**")
+            st.markdown(f"**File:** `{doc['FILE_NAME']}`")
+            st.markdown(f"**BL Number:** {doc['BL_NUMBER'] or 'N/A'}")
+            st.markdown(f"**Shipper:** {doc['SHIPPER_NAME'] or 'N/A'}")
+            st.markdown(f"**Consignee:** {doc['CONSIGNEE_NAME'] or 'N/A'}")
+            st.markdown(f"**Route:** {doc['PORT_OF_LOADING'] or '?'} → {doc['PORT_OF_DISCHARGE'] or '?'}")
+            st.markdown(f"**Freight:** ${doc['FREIGHT_CHARGES'] or 0:,.2f}")
+
+            # PDF preview link - always generate fresh URL (presigned URLs expire after 1 hour)
+            if st.button("📎 View PDF", key="gen_pdf_link"):
+                try:
+                    url = session.sql(f"CALL GET_PDF_URL({selected_doc})").collect()[0][0]
+                    if url and str(url).startswith("http"):
+                        st.markdown(
+                            f'<a href="{url}" target="_blank" style="background:#1f77b4;color:white;'
+                            f'padding:8px 16px;border-radius:4px;text-decoration:none;">'
+                            f'⬇️ Download PDF — {doc["FILE_NAME"].split("/")[-1]}</a>'
+                            f'<br><small style="color:#888;">PDF opens after download (SiS security limitation)</small>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.caption(f"PDF issue: {str(url)[:100]}")
+                except Exception as e:
+                    st.caption(f"Could not generate link: {str(e)[:100]}")
+
+            # Alert info
+            if doc['ALERT'] and doc['ALERT'] != 'No anomalies detected':
+                st.warning(f"**Alert:** {doc['ALERT']}")
+                if doc['ALERT_RESPONSE']:
+                    st.caption(doc['ALERT_RESPONSE'])
+            else:
+                st.success("No anomalies detected")
+
+        with right_col:
+            st.markdown("**✏️ Edit & Review**" if lang == "EN" else "**✏️ Chỉnh sửa & Duyệt**")
+
+            # Editable fields
+            edit_container = st.text_input("Container number", value=doc['CONTAINER_NUMBER'] or '', key="ed_container")
+            edit_vessel = st.text_input("Vessel name", value=doc['VESSEL_NAME'] or '', key="ed_vessel")
+            edit_date = st.text_input("Arrival date", value=str(doc['DATE_OF_ISSUE'] or ''), key="ed_date")
+            edit_weight = st.text_input("Gross weight (kg)", value=str(doc['GROSS_WEIGHT_KG'] or ''), key="ed_weight")
+
+            st.metric("AI Confidence", f"{doc['CONFIDENCE_SCORE'] or 0}/100")
+
+            # Status selector
+            status_options = ["Pending_Review", "AI_Processed", "Synced_To_SAP"]
+            current_idx = status_options.index(doc['STATUS']) if doc['STATUS'] in status_options else 0
+            edit_status = st.radio("Status", status_options, index=current_idx, key="ed_status", horizontal=True)
+
+            st.markdown("---")
+
+            # Action buttons
+            btn_col1, btn_col2, btn_col3 = st.columns(3)
+            with btn_col1:
+                if st.button("✅ Approve", key="btn_approve", use_container_width=True):
+                    try:
+                        import json
+                        corrections = {}
+                        if edit_container != (doc['CONTAINER_NUMBER'] or ''):
+                            corrections["container_number"] = edit_container
+                        if edit_vessel != (doc['VESSEL_NAME'] or ''):
+                            corrections["vessel_name"] = edit_vessel
+                        if edit_weight != str(doc['GROSS_WEIGHT_KG'] or ''):
+                            try:
+                                corrections["gross_weight_kg"] = float(edit_weight)
+                            except ValueError:
+                                pass
+                        if edit_date != str(doc['DATE_OF_ISSUE'] or ''):
+                            corrections["arrival_date"] = edit_date
+
+                        if corrections:
+                            cor_str = json.dumps(corrections).replace("'", "''")
+                            result = session.sql(
+                                f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'CORRECT', NULL, 'Approved with corrections', '{cor_str}')"
+                            ).collect()[0][0]
+                        else:
+                            result = session.sql(
+                                f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'APPROVE', NULL, 'Approved via Streamlit', NULL)"
+                            ).collect()[0][0]
+                        st.success(f"Approved! {result}")
+                    except Exception as e:
+                        st.error(str(e)[:150])
+
+            with btn_col2:
+                if st.button("❌ Reject", key="btn_reject", use_container_width=True):
+                    try:
+                        result = session.sql(
+                            f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'REJECT', NULL, 'Rejected via Streamlit', NULL)"
+                        ).collect()[0][0]
+                        st.warning(f"Rejected. {result}")
+                    except Exception as e:
+                        st.error(str(e)[:150])
+
+            with btn_col3:
+                if st.button("🔄 Sync to SAP", key="btn_sap", use_container_width=True):
+                    try:
+                        # First approve, then sync
+                        session.sql(
+                            f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'APPROVE', NULL, 'Approved & synced', NULL)"
+                        ).collect()
+                        # Get associated BL_ID and post to SAP
+                        bl_id_row = session.sql(f"SELECT BL_ID FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {selected_doc}").collect()
+                        if bl_id_row and bl_id_row[0]['BL_ID']:
+                            sap_result = session.sql(f"CALL SAP_POST_FI_DOCUMENT({bl_id_row[0]['BL_ID']})").collect()[0][0]
+                            st.success(f"Synced to SAP! {sap_result}")
+                        else:
+                            st.success("Approved (no BL_ID linked yet for SAP)")
+                    except Exception as e:
+                        st.error(str(e)[:150])
+
+    except Exception as e:
+        st.error(f"Could not load document: {str(e)[:150]}")
+else:
+    st.info("No extracted documents to review." if lang == "EN" else "Không có chứng từ để duyệt.")
+
 st.divider()
 
-# --- Bill of Lading Explorer (existing) ---
-st.subheader("🔍 Bill of Lading Explorer" if lang == "EN" else "🔍 Tra cứu Vận đơn" if lang == "VN" else "🔍 B/L検索")
+# --- Bill of Lading Explorer ---
+st.subheader("🔍 Bill of Lading Explorer" if lang == "EN" else "🔍 Tra cuu Van don" if lang == "VN" else "🔍 B/L検索")
 
-# Filters
 with st.expander(t["filters"], expanded=False):
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
@@ -158,7 +269,6 @@ with st.expander(t["filters"], expanded=False):
     with fc4:
         search_text = st.text_input(t["search_bl_container"], "")
 
-# Build query
 where_clauses = []
 if sel_status:
     status_list = ",".join([f"'{s}'" for s in sel_status])
@@ -175,7 +285,6 @@ if search_text:
 
 where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
-# Pagination
 try:
     total_count = session.sql(f"SELECT COUNT(*) as C FROM BILL_OF_LADING{where_sql}").collect()[0]["C"]
 except Exception:
@@ -190,7 +299,6 @@ with pg_col2:
 
 st.caption(t["showing_page"].format(page=page, total_pages=total_pages, count=f"{total_count:,}"))
 
-# Data table
 try:
     offset = (page - 1) * PAGE_SIZE
     data = session.sql(f"""

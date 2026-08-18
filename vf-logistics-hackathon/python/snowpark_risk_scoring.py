@@ -16,7 +16,7 @@ Purpose:
 How to run:
     1. Via Snowflake Notebook / Python Worksheet (uses get_active_session)
     2. Via local Python with Snowpark:
-         python snowpark_risk_scoring.py --connection ayugbce-jx50275
+         python snowpark_risk_scoring.py --connection dpyxiqz-fn71223
 
 Requires: snowflake-snowpark-python
 """

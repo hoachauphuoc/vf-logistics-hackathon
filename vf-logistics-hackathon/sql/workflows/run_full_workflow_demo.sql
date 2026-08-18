@@ -17,14 +17,14 @@ PURPOSE:
 HOW TO RUN VIA CLI:
 
   Option A - Snowflake CLI (snow sql):
-    snow sql -f run_full_workflow_demo.sql --connection ayugbce-jx50275
+    snow sql -f run_full_workflow_demo.sql --connection dpyxiqz-fn71223
 
   Option B - CoCo CLI (natural language, via Cortex Agent):
     "Scan for fraud and handle any issues autonomously"
     -> Cortex Agent VF_LOGISTICS_AGENT invokes the same procedures below
 
   Option C - Direct single command (fastest live demo):
-    snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection ayugbce-jx50275
+    snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection dpyxiqz-fn71223
 
 EXPECTED RESULT (~6-8 seconds execution):
   {"workflow":"FULL_PIPELINE_V2","status":"COMPLETED","steps":5,

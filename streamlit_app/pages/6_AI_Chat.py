@@ -5,35 +5,32 @@ from snowflake.snowpark.context import get_active_session
 st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
 session = get_active_session()
 
-# Language support
 if "lang" not in st.session_state:
     st.session_state.lang = "EN"
 lang = st.session_state.lang
 
-TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Trợ lý AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
-CAPTIONS = {"EN": "Ask about shipments, compliance, fraud — powered by Cortex AI", "VN": "Hỏi về lô hàng, tuân thủ, gian lận — Cortex AI", "JA": "出荷・コンプライアンス・不正について質問 — Cortex AI"}
-THINKING = {"EN": "Thinking...", "VN": "Đang suy nghĩ...", "JA": "考えています..."}
-WELCOME = {
-    "EN": "Hello! I'm VF Logistics AI Assistant. I can help you with:\n- Shipment tracking and analytics\n- Fraud detection and compliance\n- Revenue analysis and KPIs\n\nAsk me anything about your logistics data!",
-    "VN": "Xin chào! Tôi là Trợ lý AI VF Logistics. Tôi có thể giúp bạn:\n- Theo dõi và phân tích lô hàng\n- Phát hiện gian lận và tuân thủ\n- Phân tích doanh thu và KPI\n\nHãy hỏi tôi bất cứ điều gì về dữ liệu logistics!",
-    "JA": "こんにちは！VF Logistics AIアシスタントです。以下のことをお手伝いします：\n- 出荷追跡と分析\n- 不正検出とコンプライアンス\n- 収益分析とKPI\n\n物流データについて何でもお聞きください！"
-}
+TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Tro ly AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
+CAPTIONS = {"EN": "Ask about shipments, compliance, fraud — powered by Cortex AI", "VN": "Hoi ve lo hang, tuan thu, gian lan — Cortex AI", "JA": "出荷・コンプライアンス・不正について質問 — Cortex AI"}
+THINKING = {"EN": "Thinking...", "VN": "Dang suy nghi...", "JA": "考えています..."}
 
 st.title(TITLES[lang])
 st.caption(CAPTIONS[lang])
 
-# Read AI model from config
 try:
     ai_model = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]["CONFIG_VALUE"]
 except Exception:
     ai_model = "mistral-large2"
 
-# Initialize chat history in session state (persists during session)
+# Session state for chat persistence
 if "chat_messages" not in st.session_state:
     st.session_state.chat_messages = []
 
-if "chat_session_id" not in st.session_state:
-    st.session_state.chat_session_id = int(time.time())
+
+def safe_rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
 
 
 def cortex_chat(prompt, context="chat"):
@@ -114,7 +111,7 @@ def generate_response(question):
         import re
         allowed_tables = {"BILL_OF_LADING", "FRAUD_ALERT"}
         referenced = re.findall(r'\b(?:FROM|JOIN)\s+([A-Z_][A-Z0-9_.]*)', sql_upper)
-        table_names = {t.split(".")[-1] for t in referenced}
+        table_names = {t2.split(".")[-1] for t2 in referenced}
         if not table_names or not table_names.issubset(allowed_tables):
             return "I can only query BILL_OF_LADING and FRAUD_ALERT for safety.", None
 
@@ -123,7 +120,7 @@ def generate_response(question):
 
         data = session.sql(sql).collect()
         if not data:
-            return "No results found for your query.", sql
+            return "No results found.", sql
 
         if len(data) == 1 and len(data[0].as_dict()) <= 3:
             row = data[0].as_dict()
@@ -152,37 +149,35 @@ def generate_response(question):
         return f"Error: {err[:150]}", None
 
 
-# Sidebar
+# --- Sidebar ---
 with st.sidebar:
     st.markdown(f"**Model:** `{ai_model}`")
     st.markdown(f"**Messages:** {len(st.session_state.chat_messages)}")
-    st.divider()
+    st.markdown("---")
 
-    st.markdown("**Quick Questions**" if lang == "EN" else "**Câu hỏi nhanh**" if lang == "VN" else "**クイック質問**")
+    st.markdown("**Quick Questions**" if lang == "EN" else "**Cau hoi nhanh**")
     quick_qs = {
         "EN": ["How many shipments are pending?", "Top 5 carriers by revenue", "Show high severity alerts", "Total weight this month"],
-        "VN": ["Bao nhiêu lô hàng đang chờ?", "Top 5 hãng tàu theo doanh thu", "Hiện cảnh báo mức cao", "Tổng trọng lượng tháng này"],
+        "VN": ["Bao nhieu lo hang dang cho?", "Top 5 hang tau theo doanh thu", "Hien canh bao muc cao", "Tong trong luong thang nay"],
         "JA": ["承認待ちの出荷数は？", "収益トップ5船社", "重大アラートを表示", "今月の総重量"]
     }
-    for q in quick_qs[lang]:
+    for q in quick_qs.get(lang, quick_qs["EN"]):
         if st.button(q, key=f"qq_{hash(q)}", use_container_width=True):
             st.session_state.chat_messages.append({"role": "user", "content": q})
             with st.spinner(THINKING[lang]):
                 answer, sql = generate_response(q)
             st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})
-            st.rerun()
+            safe_rerun()
 
-    st.divider()
-
-    # Pipeline button in sidebar (merging external portal functionality)
-    st.markdown("**Pipeline**" if lang == "EN" else "**Quy trình**" if lang == "VN" else "**パイプライン**")
+    st.markdown("---")
+    st.markdown("**Pipeline**")
     if st.button("Run Full Pipeline", key="sidebar_pipeline", use_container_width=True):
         with st.spinner("Running pipeline..."):
             try:
                 result = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
                 st.session_state.chat_messages.append({
                     "role": "assistant",
-                    "content": f"Pipeline completed:\n```json\n{result}\n```",
+                    "content": f"Pipeline completed:\n```\n{result}\n```",
                     "sql": None
                 })
             except Exception as e:
@@ -191,43 +186,47 @@ with st.sidebar:
                     "content": f"Pipeline error: {str(e)[:200]}",
                     "sql": None
                 })
-        st.rerun()
+        safe_rerun()
 
-    if st.button("Clear Chat" if lang == "EN" else "Xoa hoi thoai" if lang == "VN" else "クリア", key="clear_chat", use_container_width=True):
+    if st.button("Clear Chat" if lang == "EN" else "Xoa hoi thoai", key="clear_chat", use_container_width=True):
         st.session_state.chat_messages = []
-        st.session_state.chat_session_id = int(time.time())
-        st.rerun()
+        safe_rerun()
 
-# Display chat history using st.chat_message
-if not st.session_state.chat_messages:
-    with st.chat_message("assistant"):
-        st.markdown(WELCOME[lang])
-
+# --- Chat Display (compatible with Streamlit 1.22) ---
 for msg in st.session_state.chat_messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg["role"] == "user":
+        st.markdown(f"**🧑 You:** {msg['content']}")
+    else:
+        st.markdown(f"**🤖 Assistant:** {msg['content']}")
         if msg.get("sql"):
             with st.expander("SQL Generated"):
                 st.code(msg["sql"], language="sql")
+    st.markdown("---")
 
-# Chat input using st.chat_input (native chat UX)
-if user_input := st.chat_input(
-    "Ask about shipments, fraud, compliance..."
-    if lang == "EN" else
-    "Hoi ve lo hang, gian lan, tuan thu..."
-    if lang == "VN" else
-    "出荷・不正・コンプライアンスについて質問..."
-):
+# Welcome message
+if not st.session_state.chat_messages:
+    st.info(
+        "Ask me anything about your logistics data! Try the quick questions in the sidebar, or type below."
+        if lang == "EN" else
+        "Hoi toi bat cu dieu gi ve du lieu logistics! Thu cac cau hoi nhanh o sidebar, hoac nhap ben duoi."
+    )
+
+# --- Chat Input (text_input + button for Streamlit 1.22 compatibility) ---
+st.markdown("---")
+col1, col2 = st.columns([5, 1])
+with col1:
+    user_input = st.text_input(
+        "Ask a question" if lang == "EN" else "Dat cau hoi",
+        placeholder="e.g. How many shipments are pending?" if lang == "EN" else "VD: Bao nhieu lo hang dang cho?",
+        key="chat_input",
+        label_visibility="collapsed"
+    )
+with col2:
+    send_clicked = st.button("Send 📨" if lang == "EN" else "Gui 📨", use_container_width=True)
+
+if send_clicked and user_input:
     st.session_state.chat_messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    with st.chat_message("assistant"):
-        with st.spinner(THINKING[lang]):
-            answer, sql = generate_response(user_input)
-        st.markdown(answer)
-        if sql:
-            with st.expander("SQL Generated"):
-                st.code(sql, language="sql")
-
+    with st.spinner(THINKING[lang]):
+        answer, sql = generate_response(user_input)
     st.session_state.chat_messages.append({"role": "assistant", "content": answer, "sql": sql})
+    safe_rerun()
