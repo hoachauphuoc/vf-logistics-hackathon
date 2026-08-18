@@ -227,6 +227,7 @@ vf-logistics-hackathon/
 │   │   ├── document_to_decision.sql      Ingest → extract → decide chain
 │   │   ├── hardened_objects.sql          Hardened tables/views, exported from GET_DDL
 │   │   ├── chat_persistence.sql          Chat history tables + 6 owner-rights procedures
+│   │   ├── document_data_integrity.sql   Deterministic BL validation + integrity assertions
 │   │   └── run_full_workflow_demo.sql    CLI demo script
 │   └── monitoring/
 │       └── CREDIT_MONITORING_GUIDE.md
@@ -289,7 +290,9 @@ Stated up front rather than left for a reviewer to discover:
 - **AI decision "ground truth" is rule-derived, not human-labelled.** `V_AI_DECISION_EVAL` measures whether the model faithfully applies the *written* rubric (policy adherence), which is the property that matters for an auditable compliance system. It does not claim to measure real-world fraud detection accuracy — that would require labelled fraud outcomes, which this synthetic dataset cannot provide.
 - **AI cost figures are estimates; token counts are real.** Token usage comes from Cortex's own `usage` payload per call. Cost multiplies those tokens by a reference credit rate held in `AI_MODEL_RATE`. Authoritative billed consumption remains `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_FUNCTIONS_USAGE_HISTORY`.
 - **The triage queue is intentionally not empty.** Detection applies backpressure at a queue limit instead of draining to zero, so there is always live work for a reviewer to run the pipeline against. Roughly 83% of alerts raised so far have been AI-investigated; the remainder is the working queue.
+- **Document validation is deterministic SQL, not a generative decision — and it was not always.** During the Refinement Phase the extracted-documents table was audited and found to contain self-contradicting rows. `PROCESS_BL_DOCUMENTS` computed `CONFIDENCE_SCORE` from four deterministic field checks but produced `ALERT` from a **second, independent** `CORTEX.COMPLETE` call asked to apply the same four rules in prose. Two separate judges of identical facts eventually disagreed, and they did: `DOC 402` carried `ALERT = 'ContainerNumber; VesselName; GrossWeightKg'` while simultaneously carrying `CONFIDENCE_SCORE = 100` and `STATUS = 'Synced_To_SAP'` — a document whose container number was the placeholder `XXXX0000000` was presented to reviewers as perfectly extracted and already posted to SAP. Worse, the LLM's verdict was itself wrong: two of its three flags were hallucinated (`MAERSK SENTOSA` and `24500 kg` are both valid) while the real defect — an Evergreen bill of lading on a Maersk vessel — went unreported. The rules are now a single deterministic function, `BL_DOC_ALERT`, and the confidence score is *derived from it*, so the score and the alert are mathematically incapable of disagreeing. Cortex still writes `ALERT_RESPONSE`, the human-readable explanation, but it is told the authoritative verdict and instructed not to re-decide it. **A generative call may narrate a validation outcome; it must not determine one.** Two further defects were fixed in the same pass: five rows claimed `Synced_To_SAP` with no `SAP_FI_DOCUMENT` behind them (`STATUS` is now derived from whether that row actually exists, and one document was genuinely posted rather than relabelled — no financial amounts were invented for the rest), and three rows stored a tonnes value in the kilogram column (`24.5` where peers held `24500`), which the old rule accepted because it only rejected `<= 0`. Reproducible in [`sql/workflows/document_data_integrity.sql`](sql/workflows/document_data_integrity.sql), which ends in five assertions that must each return zero rows.
 - **Two rows are deliberate adversarial test fixtures, and they are named as such.** `TESTFIXTURE-SHELLCO-01/02` carry shell-company counterparty names so the `SUSPICIOUS_PARTY` detection rule and the name-based BLOCK branch of the rubric are actually exercised. They are labelled in `REMARKS` rather than disguised as organic shipments. A previous scripted helper that seeded such rows on demand (`DEMO_PIPELINE()`) has been dropped from the database.
+- **The bad-data PDFs are intentional fixtures too.** Files named `*_ERROR.pdf` (`XXXX0000000` container numbers, `MSK@#$%789`, zero weights) exist so the extraction-confidence and anomaly paths are genuinely exercised rather than demonstrated on clean input. They are correctly scored below 100 and held in `Pending_Review`; they are the validation working, not defects. `BL_COSCO_COSU2026013_ERROR.pdf` is the one exception worth naming — every extracted field on it passes all six rules, so it scores 100. Its filename promises an error that the extracted data does not contain.
 - **Scheduled tasks ship suspended** to protect trial credits; the pipeline is triggered on demand. One `ALTER TASK ... RESUME` makes it fully hands-off.
 - **The UI contributes no business logic.** The Streamlit app calls procedures and renders results; every decision is made inside Snowflake. This was equally true of the removed Mendix portal, which is why consolidating into Streamlit changed no backend behaviour.
 
@@ -393,7 +396,7 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | Check | Result |
 |---|---|
 | Tables / views | 32 / 11 — all 11 views queried successfully |
-| Procedures / functions | 52 / 6 |
+| Procedures / functions | 52 / 10 |
 | `BILL_OF_LADING` rows | 10,017 |
 | Cortex Search `BL_SEARCH_SERVICE` | ACTIVE (indexing + serving), 10,017 rows |
 | `PROCESS_BL_DOCUMENTS()` | Returns `{"processed":0,"errors":0,"synced":true}` — no unprocessed files, auto-sync confirmed |
@@ -402,6 +405,10 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | `CHAT_WITH_DATA(...)` | Returns natural-language answer |
 | `GET_PDF_URL(402)` | Returns valid presigned URL |
 | Chat persistence round-trip | Session created, turns saved, listed, reloaded, deleted — verified under `HACKATHON_JUDGE_ROLE` with secondary roles disabled |
+| Document integrity assertions | All 5 return zero rows: no alert with 100 confidence, no alerted doc outside `Pending_Review`, no `Synced_To_SAP` without a `SAP_FI_DOCUMENT`, no weight implausible as kg, no stored score disagreeing with `BL_DOC_CONFIDENCE` |
+| Deterministic validation vs. old LLM verdict | On `DOC 402` the rules correctly report `ContainerNumber; CarrierMismatch`; the previous generative alert reported two hallucinated flags and missed the carrier mismatch |
+| `BL_DOC_ALERT` false-positive check | Every `*_VALID.pdf` document still scores 100 with no anomalies; `BERLIN EXPRESS` (a genuine Hapag-Lloyd vessel with no carrier token in its name) is not flagged |
+| `BL_DOC_ALERT` / `BL_DOC_CONFIDENCE` callable by judge | Verified under `USE SECONDARY ROLES NONE`; computed values match stored `ALERT` and `CONFIDENCE_SCORE` on every row |
 | Chat cross-user isolation | Writing to, deleting, or loading another user's conversation all correctly refused |
 | Chat payload escaping | Result JSON containing single quotes and backslashes round-trips as valid JSON and rebuilds into a DataFrame |
 | Chat NULL handling | User turns and tabular answers store real SQL `NULL` for absent fields, verified no column contains the string `'None'` |

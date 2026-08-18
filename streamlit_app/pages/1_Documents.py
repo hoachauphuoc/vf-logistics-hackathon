@@ -74,11 +74,22 @@ st.divider()
 # --- Extracted Documents Review ---
 st.subheader("📋 Extracted Documents" if lang == "EN" else "📋 Chứng từ Đã Trích Xuất" if lang == "VN" else "📋 抽出書類")
 try:
+    # Text columns are COALESCEd to an em dash here rather than being cleaned up in
+    # pandas: a NULL VARCHAR arrives as a Python None and Streamlit renders that as
+    # the word "None", which reads like extracted data rather than missing data.
+    # Doing it in SQL also avoids DataFrame.fillna() casting the numeric columns to
+    # object dtype, which would break their right-alignment and sorting.
     extracted_df = session.sql("""
-        SELECT DOC_ID, CONTAINER_NUMBER as "Container number", VESSEL_NAME as "Vessel name",
-               DATE_OF_ISSUE as "Arrival date", GROSS_WEIGHT_KG as "Gross weight",
-               CONFIDENCE_SCORE as "AI Confidence score", STATUS as "Status",
-               BL_NUMBER as "BL Number", SHIPPER_NAME as "Shipper", ALERT as "Alert"
+        SELECT DOC_ID,
+               COALESCE(CONTAINER_NUMBER, '—')            as "Container number",
+               COALESCE(VESSEL_NAME, '—')                 as "Vessel name",
+               COALESCE(TO_VARCHAR(DATE_OF_ISSUE), '—')   as "Arrival date",
+               GROSS_WEIGHT_KG                            as "Gross weight",
+               CONFIDENCE_SCORE                           as "AI Confidence score",
+               COALESCE(STATUS, '—')                      as "Status",
+               COALESCE(BL_NUMBER, '—')                   as "BL Number",
+               COALESCE(SHIPPER_NAME, '—')                as "Shipper",
+               COALESCE(ALERT, 'No anomalies detected')   as "Alert"
         FROM BILL_OF_LADING_EXTRACTED
         ORDER BY PROCESSED_AT DESC NULLS LAST
         LIMIT 20
@@ -222,19 +233,42 @@ if doc_options:
             with btn_col3:
                 if st.button("🔄 Sync to SAP", key="btn_sap", use_container_width=True):
                     try:
-                        # First approve, then sync
-                        session.sql(
-                            f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'APPROVE', NULL, 'Approved & synced', NULL)"
-                        ).collect()
-                        # Get associated BL_ID and post to SAP
-                        bl_id_row = session.sql(f"SELECT BL_ID FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {selected_doc}").collect()
-                        if bl_id_row and bl_id_row[0]['BL_ID']:
-                            sap_result = session.sql(f"CALL SAP_POST_FI_DOCUMENT({bl_id_row[0]['BL_ID']})").collect()[0][0]
-                            st.success(f"Synced to SAP! {sap_result}")
-                        else:
-                            st.success("Approved (no BL_ID linked yet for SAP)")
+                        # A document with unresolved anomalies must not reach SAP. This is
+                        # the same rule the data-integrity fix enforces server-side; the
+                        # check is repeated here so the reviewer gets told why, instead of
+                        # the click silently producing a posted-but-invalid document.
+                        blocking_alert = session.sql(f"""
+                            SELECT BL_DOC_ALERT(BL_NUMBER, CONTAINER_NUMBER, VESSEL_NAME,
+                                                GROSS_WEIGHT_KG, DATE_OF_ISSUE) AS A
+                            FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {int(selected_doc)}
+                        """).collect()[0]["A"]
                     except Exception as e:
-                        st.error(str(e)[:150])
+                        blocking_alert = None
+                        st.caption(f"Validation check unavailable: {str(e)[:80]}")
+
+                    if blocking_alert:
+                        st.error(
+                            f"Cannot sync to SAP — unresolved anomalies: {blocking_alert}. "
+                            "Correct the fields and approve first."
+                            if lang == "EN" else
+                            f"Không thể đồng bộ SAP — còn bất thường: {blocking_alert}. "
+                            "Hãy sửa dữ liệu và duyệt trước."
+                        )
+                    else:
+                        try:
+                            # First approve, then sync
+                            session.sql(
+                                f"CALL REVIEW_DOCUMENT({int(selected_doc)}, 'APPROVE', NULL, 'Approved & synced', NULL)"
+                            ).collect()
+                            # Get associated BL_ID and post to SAP
+                            bl_id_row = session.sql(f"SELECT BL_ID FROM BILL_OF_LADING_EXTRACTED WHERE DOC_ID = {selected_doc}").collect()
+                            if bl_id_row and bl_id_row[0]['BL_ID']:
+                                sap_result = session.sql(f"CALL SAP_POST_FI_DOCUMENT({bl_id_row[0]['BL_ID']})").collect()[0][0]
+                                st.success(f"Synced to SAP! {sap_result}")
+                            else:
+                                st.success("Approved (no BL_ID linked yet for SAP)")
+                        except Exception as e:
+                            st.error(str(e)[:150])
 
     except Exception as e:
         st.error(f"Could not load document: {str(e)[:150]}")
