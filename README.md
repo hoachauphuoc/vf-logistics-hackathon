@@ -25,8 +25,8 @@ Other entry points for reviewers:
 
 ## Live prototype
 
-- **Public MVP UI (Mendix) — primary reviewer entry point, no Snowflake login required:** https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive
-- **Analytics & operations dashboard (Streamlit in Snowflake):** source in [`streamlit_app/`](./streamlit_app). This is the technical proof surface shown in the submission video; a read-only Snowflake account can be provided on request, but it is optional bonus access, not required to evaluate the submission.
+- **Primary interface — Streamlit-in-Snowflake dashboard `VF_LOGISTICS_DASHBOARD`:** source in [`streamlit_app/`](./streamlit_app). Runs natively inside Snowflake (account `DPYXIQZ-FN71223`). Covers document processing, AI review/edit/approve, fraud detection, compliance, AI chat, and analytics. A read-only role `HACKATHON_JUDGE_ROLE` is available on request.
+- _(Historical)_ The original submission used a Mendix sandbox UI. Per evaluator feedback, Mendix has been **removed** and all functionality consolidated into the Streamlit app. See Section 11 of [`vf-logistics-hackathon/README.md`](./vf-logistics-hackathon/README.md) for details.
 
 ## Run the autonomous workflow
 
@@ -64,8 +64,8 @@ snowflake-backend/
 ## Languages and Snowflake features
 
 - **SQL** — core workflow orchestration and all stored procedures
-- **Python** — Snowpark risk scoring (`vf-logistics-hackathon/python/snowpark_risk_scoring.py`) and the Streamlit dashboard
-- **Java** — Mendix front-end integration via JDBC (`vf-logistics-hackathon/mendix-integration/`)
+- **Python** — Snowpark risk scoring (`vf-logistics-hackathon/python/snowpark_risk_scoring.py`) and the Streamlit-in-Snowflake dashboard (sole user interface)
+- **Java** — _reference only, not deployed_ — historical Mendix JDBC integration (`vf-logistics-hackathon/mendix-integration/`), retained to document the key-pair auth pattern
 
 Snowflake platform features used: Cortex Agent, Cortex AI (`COMPLETE`, `AI_COMPLETE`), Cortex Analyst, Cortex Search, Snowflake Marketplace (live export-screening data), Dynamic Tables, Streams and Tasks, Snowpark, and Streamlit in Snowflake.
 
