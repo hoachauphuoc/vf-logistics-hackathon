@@ -31,3 +31,7 @@ vf-logistics-hackathon/DEMO_HUONG_DAN_THAO_TAC_VI.md
 
 # Local-only notes (not for reviewers)
 vf-logistics-hackathon/_local/
+
+# Scratch files used to pass multi-line commit messages to git -F
+.cm.tmp
+.commitmsg.tmp
