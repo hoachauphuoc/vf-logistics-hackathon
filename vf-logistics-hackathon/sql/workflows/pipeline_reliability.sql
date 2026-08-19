@@ -880,6 +880,91 @@ CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(999999);
 
 
 -- ============================================================================
+-- 12. Two defects found by the end-to-end 10-document test
+-- ============================================================================
+-- See vf-logistics-hackathon/docs/E2E_PIPELINE_TEST.md for the full run.
+--
+-- 12a. TASK_COMPLIANCE_CHECK had queued the entire table.
+--
+-- Section 9b filtered the stream to METADATA$ACTION = 'INSERT' to stop the task
+-- re-checking rows it had just written. That is necessary but not sufficient.
+-- Proven with an isolated two-row stream rather than assumed:
+--
+--     UPDATE t SET flag = TRUE WHERE id = 1;   -- one row changed
+--     INSERT INTO t VALUES (3, NULL);          -- one row added
+--     SELECT id, METADATA$ACTION, METADATA$ISUPDATE FROM t_stream;
+--       1  DELETE  TRUE      <- update, delete half
+--       1  INSERT  TRUE      <- update, insert half  ** matched the old filter **
+--       3  INSERT  FALSE     <- the only genuinely new row
+--
+-- So an UPDATE contributes an INSERT-action row too. CHECK_COMPLIANCE writes
+-- COMPLIANCE_CHECK_PASSED back to BILL_OF_LADING, and the section 11 backfill
+-- updated all 10,017 rows, so every one of them leaked into COMPLIANCE_QUEUE -
+-- the exact runaway section 9 set out to prevent, through a door left open.
+-- Only ISUPDATE = FALSE means "new row".
+--
+-- Fix: add the ISUPDATE predicate (already applied in the section 9d body above),
+-- then clear the damage.
+TRUNCATE TABLE MENDIX_APP.AGENTS.COMPLIANCE_QUEUE;
+
+-- Five runaway runs had added 5 result rows each. Adjust the cut-off to the
+-- first runaway run when replaying this script.
+DELETE FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+WHERE CHECK_TIMESTAMP >= '2026-08-18 17:26:00'::TIMESTAMP_NTZ;
+
+-- 12b. ALERT_RESPONSE was silently never populated.
+--
+-- All 10 test documents came out with a NULL narrative while all 15 pre-existing
+-- ones had one, which dates the regression to the alert-prompt rewrite in
+-- document_data_integrity.sql. Confirmed by calling the model directly instead of
+-- reading the code: it answers with a leading space BEFORE the code fence,
+--
+--      ```json { "Alert": "...", "AlertResponse": "..." } ```
+--
+-- so the existing strip, REGEXP_REPLACE(alert_raw, '^```json\s*|\s*```$', ''),
+-- cannot anchor at position 0 and TRY_PARSE_JSON returns NULL. The extraction
+-- JSON a few lines earlier already solves this by slicing between the first '{'
+-- and the last '}'; the alert path simply never adopted the same idiom.
+WITH d AS (SELECT GET_DDL('PROCEDURE','MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()') AS DDL)
+SELECT (LENGTH(DDL)-LENGTH(REPLACE(DDL, $$LET alert_parsed VARIANT := TRY_PARSE_JSON(:alert_raw);$$)))
+       / LENGTH($$LET alert_parsed VARIANT := TRY_PARSE_JSON(:alert_raw);$$) AS MUST_BE_1
+FROM d;
+
+CREATE OR REPLACE TEMPORARY TABLE TMP_PROC_PATCH AS
+SELECT REPLACE(
+  GET_DDL('PROCEDURE','MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()'),
+  $$LET alert_parsed VARIANT := TRY_PARSE_JSON(:alert_raw);$$,
+  $$LET a_start NUMBER := POSITION(''{'' IN :alert_raw);
+            LET a_end NUMBER := LENGTH(:alert_raw) - POSITION(''}'' IN REVERSE(:alert_raw)) + 1;
+            IF (:a_start > 0 AND :a_end > :a_start) THEN
+                alert_raw := SUBSTRING(:alert_raw, :a_start, :a_end - :a_start + 1);
+            END IF;
+            LET alert_parsed VARIANT := TRY_PARSE_JSON(:alert_raw);$$
+) AS DDL;
+
+DECLARE S VARCHAR;
+BEGIN
+  USE DATABASE MENDIX_APP;
+  USE SCHEMA AGENTS;
+  S := (SELECT DDL FROM MENDIX_APP.AGENTS.TMP_PROC_PATCH);
+  EXECUTE IMMEDIATE :S;
+  RETURN 'ALERT_RESPONSE parsing fixed';
+END;
+
+DROP TABLE IF EXISTS MENDIX_APP.AGENTS.TMP_PROC_PATCH;
+
+GRANT USAGE ON PROCEDURE MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()
+  TO ROLE HACKATHON_JUDGE_ROLE;
+
+-- 12c. Assertions. Expect QUEUE_ROWS = 0, and every extracted document to carry a
+--      narrative once it has been (re)processed by the patched procedure.
+SELECT (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE) AS QUEUE_ROWS,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED) AS DOCS,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING_EXTRACTED
+          WHERE ALERT_RESPONSE IS NOT NULL) AS WITH_NARRATIVE;
+
+
+-- ============================================================================
 -- Known residual issues, recorded rather than hidden
 -- ============================================================================
 -- * BL_CHANGE_STREAM now has a consumer again (section 9 gave TASK_FRAUD_SCAN a
@@ -898,6 +983,12 @@ CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(999999);
 --   `WHERE STATUS = 'OPEN'` filter never selects it, and section 4 makes the
 --   shipper lookup NULL-safe regardless. It was left as-is rather than pointing
 --   it at an arbitrary real B/L, which would have invented a business fact.
+-- * ALERT_RESPONSE is only repopulated for documents processed after the section
+--   12b fix. Existing rows keep whatever they had; re-extracting them would mean
+--   deleting and reprocessing, and SYNC_EXTRACTED_TO_BILL_OF_LADING does not
+--   deduplicate, so that would leave a second BILL_OF_LADING row per document.
+-- * AI_CALL_LOG does not record the extraction calls. A run that made at least 20
+--   Cortex calls added one row, so the FinOps page understates real usage.
 -- * ALERT_TYPE holds both 'DUPLICATE_BL' (4 rows) and 'DUPLICATE_BL_NUMBER'
 --   (4 rows) for the same condition - a pre-existing enum split, unrelated to
 --   these fixes, not consolidated here to keep this change reviewable.
