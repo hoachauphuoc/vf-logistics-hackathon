@@ -21,6 +21,9 @@ Thumbs.db
 *.p8
 *.pem
 .env
+# Ignore the whole directory, not just known extensions: a key saved as
+# "rsa_key" or "snowflake.key" would otherwise slip past the patterns above.
+keys/
 
 # Internal recording artifacts (for producing the demo video, not for reviewers)
 vf-logistics-hackathon/VOICEOVER_SCRIPT_4MIN.md

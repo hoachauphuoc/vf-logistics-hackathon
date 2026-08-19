@@ -33,7 +33,7 @@ Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowf
 | Login URL | https://app.snowflake.com |
 | Account | `DPYXIQZ-FN71223` |
 | User | `HACKATHON_JUDGE` |
-| Password | `SnowHack2026!` |
+| Password | *provided in the hackathon submission form — deliberately not stored in this public repository* |
 | Role | `HACKATHON_JUDGE_ROLE` (applied automatically) |
 | App | Projects → Streamlit → **VF Logistics Dashboard** |
 
