@@ -644,16 +644,251 @@ SELECT (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE) AS QUEUE_TOTAL,
 
 
 -- ============================================================================
+-- 11. Compliance checks that never actually checked anything
+-- ============================================================================
+-- Asking "how many credits would it cost to compliance-check the 10,017
+-- historical B/Ls?" turned up something worse than a cost. The answer to the
+-- cost question, measured rather than estimated:
+--
+--   * CHECK_COMPLIANCE contains no Cortex call at all - it is pure SQL, so the
+--     Cortex cost is zero. (An earlier note in this project claiming a large
+--     Cortex bill for this backfill was simply wrong.)
+--   * Row by row: 1,300 ms per B/L measured over 8 real calls, so 10,017 rows is
+--     ~3.6 hours on an X-Small warehouse = ~3.6 credits.
+--   * Set based, the same three rules in one statement: 314 ms measured for all
+--     10,017 rows = 0.000087 credits. About 41,000x cheaper.
+--
+-- But spending either amount would have bought nothing, because:
+--
+--   1. CHECK_COMPLIANCE only INSERTed into COMPLIANCE_CHECK_RESULT. Nothing in
+--      the entire schema ever set BILL_OF_LADING.COMPLIANCE_CHECK_PASSED, so the
+--      "10,017 unchecked" figure was unaffected by running it, and the task that
+--      selects `WHERE COMPLIANCE_CHECK_PASSED IS NULL` would pick the same B/L
+--      forever. Already visible before the fix: 8 result rows covering only 4
+--      distinct B/Ls.
+--   2. BATCH_CHECK_COMPLIANCE evaluated no rules whatsoever. It aggregated the
+--      existing flag and counted NULL as passed:
+--          SUM(CASE WHEN COMPLIANCE_CHECK_PASSED = TRUE
+--                     OR COMPLIANCE_CHECK_PASSED IS NULL THEN 1 ELSE 0 END)
+--      so it returned {"failed":0,"passed":10017,"total":10017} - a clean bill of
+--      health for 10,017 shipments that had never been examined. Running the
+--      rules for real shows 1,351 of them (13.5%) fail. For a compliance
+--      submission this is the most serious class of defect available: a false
+--      assurance, not a missing feature.
+--   3. Its P_BATCH_SIZE was inert (`LIMIT` on an aggregate query returning one
+--      row), and with the page's 24-hour window no row qualified at all, so the
+--      Bulk Scan button returned {} and the UI showed "0 passed, 0 failed".
+--   4. The procedure returned `compliant` and `violations`, but the Streamlit
+--      page reads `status` and `issues`. Every single-B/L check therefore fell
+--      through to the page's else branch and displayed as FAILED regardless of
+--      the real result, and the violation list never rendered.
+--
+-- Section 11 rewrites both procedures, backfills, and asserts the outcome.
+
+-- 11a. COMPLIANCE_CHECK_RESULT carries the same unenforced-primary-key trap as
+--      FRAUD_ALERT: CHECK_ID is `autoincrement start 300` while seeded rows
+--      already reached 402. One duplicate id existed before this fix, and
+--      inserting 10,017 rows would have produced a hundred more. Renumber the
+--      duplicate, then confirm the counter sits above the real maximum.
+UPDATE MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT t
+SET CHECK_ID = r.NEW_ID
+FROM (
+  SELECT CHECK_ID AS OLD_ID, CHECK_TIMESTAMP,
+         (SELECT MAX(CHECK_ID) FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT)
+           + ROW_NUMBER() OVER (ORDER BY CHECK_TIMESTAMP) AS NEW_ID
+  FROM (
+    SELECT c.CHECK_ID, c.CHECK_TIMESTAMP,
+           ROW_NUMBER() OVER (PARTITION BY c.CHECK_ID ORDER BY c.CHECK_TIMESTAMP) AS RN
+    FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT c
+    JOIN (SELECT CHECK_ID FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+          GROUP BY CHECK_ID HAVING COUNT(*) > 1) d ON d.CHECK_ID = c.CHECK_ID)
+  WHERE RN > 1) r
+WHERE t.CHECK_ID = r.OLD_ID AND t.CHECK_TIMESTAMP = r.CHECK_TIMESTAMP;
+
+-- Probe the counter, then remove the probe. If COUNTER_NOW is not already above
+-- the real maximum, burn it forward as in section 3 before continuing.
+INSERT INTO MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+    (BL_ID, COMPLIANT, VIOLATIONS, RISK_SCORE, RULES_CHECKED)
+SELECT -1, FALSE, '["__SEQ_BURN__"]', 0, 0;
+
+SELECT MAX(CASE WHEN BL_ID = -1 THEN CHECK_ID END)  AS COUNTER_NOW,
+       MAX(CASE WHEN BL_ID <> -1 THEN CHECK_ID END) AS REAL_MAX
+FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT;
+
+DELETE FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT WHERE BL_ID = -1;
+
+-- 11b. Single-B/L check: same three rules, but it now persists the flag and
+--      returns the keys the UI actually reads.
+CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.CHECK_COMPLIANCE(P_BL_ID NUMBER)
+RETURNS VARIANT
+LANGUAGE SQL
+COMMENT = 'Rule-based compliance scoring for one B/L. Writes COMPLIANCE_CHECK_RESULT and, unlike the previous version, also persists BILL_OF_LADING.COMPLIANCE_CHECK_PASSED so the check is observable afterwards.'
+EXECUTE AS OWNER
+AS
+$$
+DECLARE
+  v_bl_number  VARCHAR;
+  v_restricted BOOLEAN;
+  v_dangerous  BOOLEAN;
+  v_weight     FLOAT;
+  v_issues     ARRAY;
+  v_risk       NUMBER;
+  v_compliant  BOOLEAN;
+BEGIN
+  SELECT b.BL_NUMBER,
+         COALESCE(r.RESTRICTED, FALSE),
+         COALESCE(b.IS_DANGEROUS_GOODS, FALSE),
+         b.GROSS_WEIGHT_KGS
+    INTO :v_bl_number, :v_restricted, :v_dangerous, :v_weight
+  FROM MENDIX_APP.AGENTS.BILL_OF_LADING b
+  LEFT JOIN (SELECT HS_CODE, MAX(IS_RESTRICTED OR REQUIRES_PERMIT) AS RESTRICTED
+             FROM MENDIX_APP.AGENTS.HS_CODE_REFERENCE GROUP BY HS_CODE) r
+         ON r.HS_CODE = b.HS_CODE
+  WHERE b.BL_ID = :P_BL_ID;
+
+  -- A SELECT ... INTO over zero rows leaves the variables NULL rather than
+  -- raising, so this guard is reachable and is the only signal that the id
+  -- does not exist.
+  IF (v_bl_number IS NULL) THEN
+    RETURN OBJECT_CONSTRUCT('status', 'NOT_FOUND', 'bl_id', :P_BL_ID);
+  END IF;
+
+  v_issues := ARRAY_CONSTRUCT_COMPACT(
+      IFF(:v_restricted, 'RESTRICTED_HS_CODE', NULL),
+      IFF(:v_weight > 50000, 'OVERWEIGHT', NULL),
+      IFF(:v_dangerous, 'DANGEROUS_GOODS', NULL));
+
+  v_risk := IFF(:v_restricted, 30, 0)
+          + IFF(:v_dangerous, 20, 0)
+          + IFF(:v_weight > 50000, 10, 0);
+
+  -- Dangerous goods raise the risk score but are lawful to ship when declared,
+  -- so they are reported as an issue without failing the check. A restricted
+  -- HS code is the only hard failure.
+  v_compliant := NOT :v_restricted;
+
+  INSERT INTO MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+      (BL_ID, COMPLIANT, VIOLATIONS, RISK_SCORE, RULES_CHECKED)
+  SELECT :P_BL_ID, :v_compliant, TO_JSON(:v_issues), :v_risk, 3;
+
+  UPDATE MENDIX_APP.AGENTS.BILL_OF_LADING
+     SET COMPLIANCE_CHECK_PASSED = :v_compliant
+   WHERE BL_ID = :P_BL_ID;
+
+  RETURN OBJECT_CONSTRUCT(
+      'status',     IFF(:v_compliant, 'PASS', 'FAIL'),
+      'bl_number',  :v_bl_number,
+      'compliant',  :v_compliant,
+      'risk_score', :v_risk,
+      'issues',     :v_issues,
+      'violations', :v_issues,
+      'rules_checked', 3);
+END;
+$$;
+
+-- 11c. Batch check: evaluates the rules set-based over still-unchecked rows.
+--      P_HOURS <= 0 or NULL means all time, which is what makes the Bulk Scan
+--      button usable on a dataset whose rows are older than a day.
+CREATE OR REPLACE PROCEDURE MENDIX_APP.AGENTS.BATCH_CHECK_COMPLIANCE(P_HOURS NUMBER DEFAULT 24, P_BATCH_SIZE NUMBER DEFAULT 50)
+RETURNS VARIANT
+LANGUAGE SQL
+COMMENT = 'Set-based compliance scoring for up to P_BATCH_SIZE still-unchecked B/Ls. P_HOURS <= 0 or NULL means all time. The previous version evaluated nothing: it counted existing flags and treated NULL as passed, so it reported 10,017 passed for shipments that had never been checked.'
+EXECUTE AS OWNER
+AS
+$$
+DECLARE
+  v_checked   NUMBER DEFAULT 0;
+  v_passed    NUMBER DEFAULT 0;
+  v_failed    NUMBER DEFAULT 0;
+  v_remaining NUMBER DEFAULT 0;
+BEGIN
+  CREATE OR REPLACE TEMPORARY TABLE TMP_COMPLIANCE_BATCH AS
+  SELECT b.BL_ID,
+         NOT COALESCE(r.RESTRICTED, FALSE) AS COMPLIANT,
+         TO_JSON(ARRAY_CONSTRUCT_COMPACT(
+             IFF(COALESCE(r.RESTRICTED, FALSE), 'RESTRICTED_HS_CODE', NULL),
+             IFF(b.GROSS_WEIGHT_KGS > 50000, 'OVERWEIGHT', NULL),
+             IFF(COALESCE(b.IS_DANGEROUS_GOODS, FALSE), 'DANGEROUS_GOODS', NULL))) AS VIOLATIONS,
+         IFF(COALESCE(r.RESTRICTED, FALSE), 30, 0)
+           + IFF(COALESCE(b.IS_DANGEROUS_GOODS, FALSE), 20, 0)
+           + IFF(b.GROSS_WEIGHT_KGS > 50000, 10, 0) AS RISK_SCORE
+  FROM MENDIX_APP.AGENTS.BILL_OF_LADING b
+  LEFT JOIN (SELECT HS_CODE, MAX(IS_RESTRICTED OR REQUIRES_PERMIT) AS RESTRICTED
+             FROM MENDIX_APP.AGENTS.HS_CODE_REFERENCE GROUP BY HS_CODE) r
+         ON r.HS_CODE = b.HS_CODE
+  WHERE b.COMPLIANCE_CHECK_PASSED IS NULL
+    AND (:P_HOURS IS NULL OR :P_HOURS <= 0
+         OR b.CREATED_AT >= DATEADD('hour', -1 * :P_HOURS, CURRENT_TIMESTAMP()))
+  ORDER BY b.CREATED_AT DESC NULLS LAST
+  LIMIT :P_BATCH_SIZE;
+
+  INSERT INTO MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+      (BL_ID, COMPLIANT, VIOLATIONS, RISK_SCORE, RULES_CHECKED)
+  SELECT BL_ID, COMPLIANT, VIOLATIONS, RISK_SCORE, 3 FROM TMP_COMPLIANCE_BATCH;
+  v_checked := SQLROWCOUNT;
+
+  UPDATE MENDIX_APP.AGENTS.BILL_OF_LADING b
+     SET COMPLIANCE_CHECK_PASSED = t.COMPLIANT
+    FROM TMP_COMPLIANCE_BATCH t
+   WHERE b.BL_ID = t.BL_ID;
+
+  SELECT NVL(SUM(IFF(COMPLIANT, 1, 0)), 0), NVL(SUM(IFF(COMPLIANT, 0, 1)), 0)
+    INTO :v_passed, :v_failed
+  FROM TMP_COMPLIANCE_BATCH;
+
+  v_remaining := (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+                  WHERE COMPLIANCE_CHECK_PASSED IS NULL);
+
+  RETURN OBJECT_CONSTRUCT('passed', :v_passed, 'failed', :v_failed,
+                          'total', :v_checked, 'not_checked_remaining', :v_remaining);
+END;
+$$;
+
+-- 11d. Backfill everything. Measured at well under a second for 10,017 rows.
+CALL MENDIX_APP.AGENTS.BATCH_CHECK_COMPLIANCE(0, 20000);
+
+-- 11e. CREATE OR REPLACE PROCEDURE dropped the grants again.
+GRANT USAGE ON PROCEDURE MENDIX_APP.AGENTS.CHECK_COMPLIANCE(NUMBER)
+  TO ROLE HACKATHON_JUDGE_ROLE;
+GRANT USAGE ON PROCEDURE MENDIX_APP.AGENTS.BATCH_CHECK_COMPLIANCE(NUMBER,NUMBER)
+  TO ROLE HACKATHON_JUDGE_ROLE;
+
+-- 11f. Assertions.
+--      Expect STILL_UNCHECKED = 0, FLAG_PASSED = 8666, FLAG_FAILED = 1351,
+--      and DUP_CHECK_IDS = 0.
+SELECT (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+          WHERE COMPLIANCE_CHECK_PASSED IS NULL)  AS STILL_UNCHECKED,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+          WHERE COMPLIANCE_CHECK_PASSED = TRUE)   AS FLAG_PASSED,
+       (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.BILL_OF_LADING
+          WHERE COMPLIANCE_CHECK_PASSED = FALSE)  AS FLAG_FAILED,
+       (SELECT COUNT(*) FROM (SELECT CHECK_ID FROM MENDIX_APP.AGENTS.COMPLIANCE_CHECK_RESULT
+          GROUP BY CHECK_ID HAVING COUNT(*) > 1)) AS DUP_CHECK_IDS;
+
+-- The stored flag must agree with a fresh evaluation of the rules on every row.
+-- Expect 0.
+SELECT COUNT(*) AS FLAG_DISAGREES_WITH_RULES
+FROM MENDIX_APP.AGENTS.BILL_OF_LADING b
+LEFT JOIN (SELECT HS_CODE, MAX(IS_RESTRICTED OR REQUIRES_PERMIT) AS RESTRICTED
+           FROM MENDIX_APP.AGENTS.HS_CODE_REFERENCE GROUP BY HS_CODE) r
+       ON r.HS_CODE = b.HS_CODE
+WHERE b.COMPLIANCE_CHECK_PASSED IS DISTINCT FROM (NOT COALESCE(r.RESTRICTED, FALSE));
+
+-- The UI contract: 'status' must be PASS or FAIL, never absent, and a missing id
+-- must say NOT_FOUND rather than silently reading as compliant.
+CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(999999);
+
+
+-- ============================================================================
 -- Known residual issues, recorded rather than hidden
 -- ============================================================================
 -- * BL_CHANGE_STREAM now has a consumer again (section 9 gave TASK_FRAUD_SCAN a
 --   body that reads it), so the earlier concern about it going stale is resolved.
--- * The 10,017 pre-existing rows with COMPLIANCE_CHECK_PASSED IS NULL are left
---   unchecked ON PURPOSE. They are seed data, and having a 30-minute task grind
---   through them one at a time - driven by its own writes rather than by new
---   data - would run for roughly 209 days and spend Cortex credits the whole
---   way. Use the Compliance page's Bulk Scan, or BATCH_CHECK_COMPLIANCE(24, N),
---   if that backfill is genuinely wanted.
+-- * The 10,017 pre-existing rows with COMPLIANCE_CHECK_PASSED IS NULL are not
+--   drained by the scheduled task ON PURPOSE - having a 30-minute task grind
+--   through them one at a time, driven by its own writes rather than by new data,
+--   would run for roughly 209 days. Section 11 backfills them in a single
+--   set-based pass instead, which is what a backfill should be.
 -- * SYSTEM$STREAM_HAS_DATA can report TRUE while the stream contains zero rows.
 --   Each task therefore still starts a warehouse for that one cheap run (a COUNT
 --   plus a single-row INSERT) before disarming itself. The guard keeps it cheap;

@@ -910,6 +910,7 @@ _PAGE_STRINGS = {
         "q_ai_decisions": "AI decisions by outcome",
         # --- 2_Compliance.py -------------------------------------------------
         "f_bl_id": "B/L ID",
+        "scan_remaining": "{n} still unchecked",
         "compliance_passed": "✅ B/L #{id}: Compliance PASSED",
         "compliance_warning": "⚠️ B/L #{id}: Compliance WARNING",
         "compliance_failed": "🚨 B/L #{id}: Compliance FAILED",
@@ -1091,6 +1092,7 @@ _PAGE_STRINGS = {
         "q_recent_sap": "Các bút toán SAP gần đây",
         "q_ai_decisions": "Quyết định AI theo kết quả",
         "f_bl_id": "B/L ID",
+        "scan_remaining": "còn {n} chưa kiểm tra",
         "compliance_passed": "✅ B/L #{id}: Đạt kiểm tra tuân thủ",
         "compliance_warning": "⚠️ B/L #{id}: Cảnh báo tuân thủ",
         "compliance_failed": "🚨 B/L #{id}: Không đạt tuân thủ",
@@ -1270,6 +1272,7 @@ _PAGE_STRINGS = {
         "q_recent_sap": "最近のSAP転記",
         "q_ai_decisions": "AI判定の内訳",
         "f_bl_id": "B/L ID",
+        "scan_remaining": "未チェック {n} 件",
         "compliance_passed": "✅ B/L #{id}: コンプライアンス適合",
         "compliance_warning": "⚠️ B/L #{id}: コンプライアンス警告",
         "compliance_failed": "🚨 B/L #{id}: コンプライアンス不適合",

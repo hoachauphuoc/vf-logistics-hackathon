@@ -15,7 +15,18 @@ action_col1, action_col2 = st.columns(2)
 
 with action_col1:
     st.markdown(f"**{t['single_check']}**")
-    bl_id = st.number_input(t["f_bl_id"], min_value=1, max_value=10010, value=1)
+    # The upper bound is read from the data. It was hardcoded to 10010, but BL_ID
+    # runs to 14315 (10,017 rows over a non-contiguous range), so every B/L above
+    # 10010 was unreachable from this control.
+    @st.cache_data(ttl=600)
+    def get_bl_id_bounds():
+        row = session.sql("SELECT MIN(BL_ID) AS LO, MAX(BL_ID) AS HI FROM BILL_OF_LADING").collect()[0]
+        return int(row["LO"]), int(row["HI"])
+    try:
+        bl_lo, bl_hi = get_bl_id_bounds()
+    except Exception:
+        bl_lo, bl_hi = 1, 14315
+    bl_id = st.number_input(t["f_bl_id"], min_value=bl_lo, max_value=bl_hi, value=bl_lo)
     if st.button(t["run_compliance"], type="primary"):
         with st.spinner(t["running_compliance"]):
             try:
@@ -56,11 +67,17 @@ with action_col2:
         with st.spinner(t["scanning_compliance"]):
             try:
                 import json as json_mod
-                result = session.sql("CALL BATCH_CHECK_COMPLIANCE(24, ?)", params=[batch_size]).collect()[0][0]
+                # Hours = 0 means all time. The page used to pass 24, and no row
+                # has a CREATED_AT inside the last day, so Bulk Scan silently
+                # examined nothing and reported "0 passed, 0 failed".
+                result = session.sql("CALL BATCH_CHECK_COMPLIANCE(0, ?)", params=[batch_size]).collect()[0][0]
                 data = json_mod.loads(result) if isinstance(result, str) else result
                 passed = data.get("passed", 0) if isinstance(data, dict) else 0
                 failed = data.get("failed", 0) if isinstance(data, dict) else 0
+                remaining = data.get("not_checked_remaining") if isinstance(data, dict) else None
                 st.success(f"✅ {t['scan_complete'].format(passed=passed, failed=failed)}")
+                if remaining is not None:
+                    st.caption(t["scan_remaining"].format(n=f"{int(remaining):,}"))
             except Exception as e:
                 st.error(t["bulk_scan_error"].format(err=str(e)[:150]))
 
