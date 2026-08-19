@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 from snowflake.snowpark.context import get_active_session
-from i18n import init_language, translate_dynamic, rename_columns
+from i18n import init_language, rename_columns
 import ui
 
 st.set_page_config(page_title="Compliance", page_icon="✅", layout="wide")

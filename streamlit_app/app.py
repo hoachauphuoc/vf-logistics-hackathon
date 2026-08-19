@@ -2,7 +2,6 @@ import streamlit as st
 from snowflake.snowpark.context import get_active_session
 import plotly.express as px
 import plotly.graph_objects as go
-import pandas as pd
 from i18n import init_language
 import ui
 

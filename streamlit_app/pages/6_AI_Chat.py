@@ -7,7 +7,7 @@ from snowflake.snowpark.context import get_active_session
 from i18n import init_language
 import ui
 
-st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
+st.set_page_config(page_title="AI Chat", page_icon="ðŸ’¬", layout="wide")
 session = get_active_session()
 
 # init_language() renders the sidebar language selector, the same control every
@@ -15,15 +15,12 @@ session = get_active_session()
 # landing here directly left no way to change language until you visited another
 # page and came back. The page keeps its own TITLES/CAPTIONS dictionaries; only
 # the selector is shared.
-init_language()
+t = init_language()
 lang = st.session_state.lang
 
-TITLES = {"EN": "💬 VF Logistics AI Assistant", "VN": "💬 Tro ly AI VF Logistics", "JA": "💬 VF Logistics AIアシスタント"}
-CAPTIONS = {
-    "EN": "Ask about shipments, carriers, compliance, fraud, or ERP postings — grounded in live Snowflake data",
-    "VN": "Hoi ve lo hang, hang tau, tuan thu, gian lan — du lieu truc tiep tu Snowflake",
-    "JA": "出荷・船社・コンプライアンス・不正について質問 — Snowflakeのライブデータに基づく",
-}
+# The title and caption used to be local dicts here, and their Vietnamese had no
+# diacritics ("Tro ly AI", "Hoi ve lo hang") while correctly accented values sat
+# unused in TRANSLATIONS. They now resolve through i18n like every other string.
 
 # --- Styling: professional chat bubbles ---
 # The shared theme is applied first, then the chat-specific rules below extend it.
@@ -56,7 +53,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-ui.page_header(TITLES[lang], CAPTIONS[lang])
+ui.page_header(t["ai_chat_title"], t["ai_chat_caption"])
 
 try:
     ai_model = session.sql(
@@ -278,7 +275,7 @@ SCHEMA_HINT = (
     "\n"
     "IMPORTANT - use these exact literal values, do not invent your own:\n"
     "- BILL_OF_LADING.STATUS: 'In_Transit', 'Delivered', 'APPROVED', 'Pending_Review', "
-    "'VALIDATED', 'SAP_POSTED', 'DRAFT', 'BLOCKED'. There is no value 'PENDING' — "
+    "'VALIDATED', 'SAP_POSTED', 'DRAFT', 'BLOCKED'. There is no value 'PENDING' â€” "
     "a question about pending or awaiting-review shipments means STATUS = 'Pending_Review'.\n"
     "- BILL_OF_LADING.PAYMENT_STATUS: 'PAID', 'UNPAID'\n"
     "- BILL_OF_LADING.CARRIER_NAME: 'MAERSK', 'MSC', 'COSCO', 'HAPAG_LLOYD', 'CMA_CGM', "
@@ -430,7 +427,7 @@ with st.sidebar:
             for s in past:
                 sid = int(s["SESSION_ID"])
                 title = str(s.get("TITLE") or t["untitled"])[:36]
-                mark = " ●" if sid == st.session_state.get("session_id") else ""
+                mark = " â—" if sid == st.session_state.get("session_id") else ""
                 if st.button(f"{title}{mark}", key=f"sess_{sid}", use_container_width=True):
                     loaded = db_load_session(sid)
                     if loaded is not None:
@@ -468,7 +465,7 @@ with st.sidebar:
     if st.button(t["run_full_pipeline"], key="sidebar_pipeline", use_container_width=True):
         ensure_session()
         t0 = time.time()
-        with st.spinner("Detect → Investigate → Screen → Remediate → SAP post..."):
+        with st.spinner("Detect â†’ Investigate â†’ Screen â†’ Remediate â†’ SAP post..."):
             try:
                 result = session.sql("CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')").collect()[0][0]
                 content = t["pipeline_done"] + f"\n```json\n{result}\n```"

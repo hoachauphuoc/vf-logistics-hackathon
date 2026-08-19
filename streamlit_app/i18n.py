@@ -223,7 +223,7 @@ TRANSLATIONS = {
 
         # AI Chat page
         "ai_chat_title": "💬 VF Logistics AI Assistant",
-        "ai_chat_caption": "Ask about shipments, compliance, fraud — powered by Cortex AI",
+        "ai_chat_caption": "Ask about shipments, carriers, compliance, fraud, or ERP postings — grounded in live Snowflake data",
         "quick_questions": "⚡ Quick Questions",
         "q_pending": "How many shipments are pending review?",
         "q_top_carriers": "Top 5 carriers by total charges",
@@ -460,7 +460,7 @@ TRANSLATIONS = {
 
         # AI Chat page
         "ai_chat_title": "💬 Trợ lý AI VF Logistics",
-        "ai_chat_caption": "Hỏi về lô hàng, tuân thủ, gian lận — dùng Cortex AI",
+        "ai_chat_caption": "Hỏi về lô hàng, hãng tàu, tuân thủ, gian lận hoặc bút toán ERP — dựa trên dữ liệu Snowflake trực tiếp",
         "quick_questions": "⚡ Câu hỏi Nhanh",
         "q_pending": "Có bao nhiêu lô hàng đang chờ duyệt?",
         "q_top_carriers": "Top 5 hãng tàu theo tổng cước phí",
@@ -697,7 +697,7 @@ TRANSLATIONS = {
 
         # AI Chat page
         "ai_chat_title": "💬 VF Logistics AIアシスタント",
-        "ai_chat_caption": "出荷・コンプライアンス・不正について質問 — Cortex AI搭載",
+        "ai_chat_caption": "出荷・船社・コンプライアンス・不正・ERP転記について質問 — Snowflakeのライブデータに基づく",
         "quick_questions": "⚡ クイック質問",
         "q_pending": "承認待ちの出荷はいくつありますか？",
         "q_top_carriers": "料金合計トップ5の船社",
