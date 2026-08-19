@@ -51,6 +51,27 @@ def accent_ramp(n):
 # ---------------------------------------------------------------------------
 _THEME_CSS = f"""
 <style>
+/* Streamlit's default main-container padding reserves a large band of empty
+   space above and below the content. Inside Snowsight the app already sits in an
+   iframe that has its own scrollbar, so that dead space pushed the page past the
+   viewport and produced a second, inner scrollbar even on pages whose content
+   comfortably fitted - two scrollbars side by side on every page.
+   Trimming the padding removes the spurious one. The outer Snowsight scrollbar is
+   part of the host page and cannot be removed from inside the app.
+   Several selectors are listed because the class names differ between Streamlit
+   versions; the ones that do not match are simply ignored. */
+.block-container,
+section.main > div.block-container,
+div[data-testid="stAppViewContainer"] > section > div.block-container {{
+    padding-top: 2.2rem !important;
+    padding-bottom: 2.5rem !important;
+}}
+
+/* The default footer is an empty band at the bottom of every page that only adds
+   height. Hiding it shortens each page by roughly its own height. */
+footer {{ visibility: hidden; height: 0; padding: 0; margin: 0; }}
+div[data-testid="stDecoration"] {{ display: none; }}
+
 /* Headline treatment, previously only on the home page. */
 .vf-title {{
     font-size: 2.1rem;

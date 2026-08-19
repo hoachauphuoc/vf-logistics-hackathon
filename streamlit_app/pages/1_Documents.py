@@ -363,10 +363,17 @@ try:
 
     if not data.empty:
         data = rename_columns(data, lang)
-        row_height = 35
-        header_height = 38
-        calculated_height = header_height + row_height * len(data) + 3
-        ui.show_table(data, height=calculated_height)
+        # No explicit height. This table used to set
+        #     height = 38 + 35 * len(data) + 3
+        # to force all 25 rows to be visible at once, but 35px was a guess at
+        # Streamlit's row height. Whenever a cell wrapped, the content exceeded
+        # the container and the grid grew its own scrollbar nested inside the
+        # page's - so the wheel scrolled the table until it bottomed out and only
+        # then scrolled the page. It also made this one panel ~900px tall while
+        # every other table in the app used the default, so the pages scrolled
+        # inconsistently. Letting Streamlit size the grid keeps one scroll
+        # behaviour everywhere.
+        ui.show_table(data)
     else:
         ui.empty_state(t["no_records_match"])
 except Exception as e:

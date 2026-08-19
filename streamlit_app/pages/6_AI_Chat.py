@@ -23,11 +23,11 @@ lang = st.session_state.lang
 # unused in TRANSLATIONS. They now resolve through i18n like every other string.
 
 # --- Styling: professional chat bubbles ---
-# The shared theme is applied first, then the chat-specific rules below extend it.
-# The bubble styling stays local to this page because nothing else renders a
-# conversation, and this page's persistence behaviour is already verified end to
-# end - the shared layer is additive here rather than a rewrite.
-ui.apply_theme()
+# Only the chat-specific rules are injected here. The shared theme arrives via
+# ui.page_header() below, which calls apply_theme() itself; calling it here as
+# well injected the same stylesheet twice, and each st.markdown leaves a
+# container in the DOM that still takes vertical margin even when its only
+# content is a <style> tag, so the duplicate showed up as stray gaps.
 st.markdown("""
 <style>
 .chat-meta {
