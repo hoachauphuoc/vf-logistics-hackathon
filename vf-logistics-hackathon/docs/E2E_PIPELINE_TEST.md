@@ -142,14 +142,23 @@ repaired. They are kept here because the fix is only meaningful next to the symp
   `PARSE_DOCUMENT` is billed per page rather than per token, so its token columns are
   left `NULL` rather than filled with a guess.
 
-### Residual, not fixed
+### Residual, now also fixed
 
-A full 7-day window could itself reach the limit, and the gate still suppresses
-**all** severities when it trips — a saturated queue of `MEDIUM` alerts can therefore
-still delay `HIGH`-severity detection. Making the `HIGH` rules bypass the gate means
-restructuring the `IF`/`ELSE` around five separate `INSERT` statements, which is not a
-change worth making unverified this close to the deadline. The window fix removes the
-permanent latch, which was the actual defect.
+The window fix removed the permanent latch but left the gate wrapping all five
+detection rules, so whenever it did trip it suppressed every severity — a saturated
+`MEDIUM` backlog could still hide a `HIGH`-severity fraud. The gate is now advisory:
+`SUSPICIOUS_PARTY` (unconditionally `HIGH`) always runs, the three rules that choose
+severity with a `CASE` are narrowed under saturation to exactly the rows that `CASE`
+would mark `HIGH`, and `WEIGHT_ANOMALY` (unconditionally `MEDIUM`) is suppressed whole.
+
+Verifying this required injected data, because the obvious test is misleading: forcing
+saturation returned `new_alerts: 0`, but all four `HIGH`-capable rules had **zero**
+eligible candidates, so zero was correct for an unrelated reason — and is precisely
+what a broken guard would also produce. With one B/L that can only raise `HIGH` and one
+that can only raise `MEDIUM`: saturated, the `HIGH` row was detected and the `MEDIUM`
+row was not; unsaturated, the `MEDIUM` row was picked up as `WEIGHT_ANOMALY`. Before
+the change both would have been missed. Details and rollback:
+`sql/workflows/section13d_severity_aware_throttle.sql`.
 
 A third, smaller observation: deleting a row from `BILL_OF_LADING_EXTRACTED` and
 reprocessing the file produced a **second** `BILL_OF_LADING` row for the same
