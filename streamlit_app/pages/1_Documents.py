@@ -50,6 +50,18 @@ with proc_col2:
                 st.error(t["ingest_error"].format(err=str(e)[:200]))
 
 # Stage file count
+#
+# extracted_count is bound before the try, not inside it. The metric block swallows
+# every exception, so on a failure the name would otherwise never exist and the
+# truncation caption further down would raise NameError instead of the page simply
+# showing no metrics.
+extracted_count = None
+
+# Upper bound on rows pulled into the Extracted documents table below. The table
+# holds one row per ingested PDF, so this is a safety valve for a table that grew
+# unexpectedly, not a page-size setting.
+EXTRACTED_ROW_CAP = 500
+
 try:
     stage_files = session.sql("""
         SELECT COUNT(*) as CNT FROM DIRECTORY(@MENDIX_APP.AGENTS.LOGISTICS_STAGE)
@@ -75,7 +87,15 @@ try:
     # "Date of issue" is DATE_OF_ISSUE, the date the bill of lading was issued. It
     # was previously labelled "Arrival date", which is a different and unrelated
     # milestone and would mislead anyone reading the table.
-    extracted_df = session.sql("""
+    #
+    # This query used to end in "LIMIT 20" while the "Extracted documents" metric
+    # above it counted the whole table. With 25 rows on the stage the page showed
+    # "25" and then listed 20, so the two numbers on one screen contradicted each
+    # other and the five newest documents were simply invisible. The metric and the
+    # table now read the same set. EXTRACTED_ROW_CAP is a guard against unbounded
+    # growth, not a display choice: when it actually truncates, the page says so
+    # instead of silently dropping rows.
+    extracted_df = session.sql(f"""
         SELECT DOC_ID,
                CONTAINER_NUMBER   as "Container number",
                VESSEL_NAME        as "Vessel name",
@@ -88,10 +108,14 @@ try:
                ALERT              as "Alert"
         FROM BILL_OF_LADING_EXTRACTED
         ORDER BY PROCESSED_AT DESC NULLS LAST
-        LIMIT 20
+        LIMIT {EXTRACTED_ROW_CAP}
     """).to_pandas()
     if not extracted_df.empty:
         ui.show_table(extracted_df)
+        if len(extracted_df) >= EXTRACTED_ROW_CAP:
+            st.caption(t["table_truncated"].format(
+                shown=len(extracted_df),
+                total=extracted_count if extracted_count is not None else len(extracted_df)))
     else:
         ui.empty_state(t["no_extracted_docs"])
 except Exception as e:

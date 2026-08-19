@@ -93,16 +93,63 @@ plus an INSERT row, both flagged `METADATA$ISUPDATE = TRUE`, so the filter
 than assumed. Fixed by adding `AND METADATA$ISUPDATE = FALSE`, emptying the queue,
 and removing the 25 rows five runaway task runs had added.
 
-## Two limitations of this test, stated rather than glossed
+## Two limitations of this test — both since fixed
+
+Both were reported as limitations of the run above and have since been root-caused and
+repaired. They are kept here because the fix is only meaningful next to the symptom.
 
 - **The fraud path was throttled, not exercised.** `FRAUD_ALERT` gained zero rows
   because the open queue already sat at `P_QUEUE_LIMIT = 100`, so
-  `WORKFLOW_DETECT_AND_ACT` correctly declined to add more. Backpressure working is
-  the right outcome, but it means this run validated extraction and validation
-  thoroughly and detection barely at all.
+  `WORKFLOW_DETECT_AND_ACT` correctly declined to add more.
+
+  **Root cause:** the gate counted *every* `OPEN` `HIGH`/`MEDIUM` alert ever raised,
+  with no time bound. That number only grows, so once the lifetime backlog crossed the
+  limit the detector switched itself off permanently — a one-way latch, not
+  backpressure. 106 open alerts against a limit of 100 meant every future run would
+  return `throttled: true` and add nothing, and no detection rule would ever run again.
+
+  **Fix:** the queue is now a 7-day rolling window — the alerts a human could still
+  plausibly be working. The same 106 alerts are 47 inside that window. Verified:
+  `WORKFLOW_DETECT_AND_ACT()` returned
+  `{"throttled":false,"new_alerts":8,"high_severity_open":4}`, where it had previously
+  returned `throttled: true` with zero alerts on every invocation. The 8 verification
+  alerts were then deleted and `FRAUD_ALERT` is back to 496 rows.
+
 - **`AI_CALL_LOG` gained only 1 row** for a run that made at least 20 Cortex calls
-  (two per document). Extraction calls are not being logged, so the FinOps page's
-  cost attribution understates real usage. Not fixed here.
+  (two per document). Extraction calls were not logged, so the FinOps page's cost
+  attribution understated real usage.
+
+  **Root cause:** `PROCESS_BL_DOCUMENTS` made both of its Cortex calls —
+  `PARSE_DOCUMENT` for OCR and `COMPLETE` for field extraction — without writing to
+  the ledger at all.
+
+  Fixing that surfaced a second defect underneath it. `AI_CALL_LOG.CALL_ID` was
+  `autoincrement start 1 ... noorder`, while seeded data already used ids up to 703, so
+  **69 `CALL_ID`s and 66 `LOG_ID`s were duplicated** — the same unenforced-primary-key
+  trap that broke `FRAUD_ALERT.ALERT_ID`. `noorder` allocates ids from non-monotonic
+  cached ranges, which is why burning the counter forward does not work: two
+  consecutive single-row inserts were observed to receive 313 and then 651. The table
+  was rebuilt with both id columns defaulting to dedicated `SEQUENCE` objects starting
+  at 100000, and the 423 historical rows reloaded with dense ids. `HASH_AGG` over all
+  non-id columns is byte-identical to the pre-fix clone, so only ids changed.
+
+  **Fix verified live:** one PDF was processed end to end and produced exactly two log
+  rows — `BL_EXTRACTION_OCR` (1,315 ms) and `BL_EXTRACTION_JSON` (15,445 ms, 1,082
+  input + 413 output = 1,495 tokens via `COUNT_TOKENS`) — with ids 100002 and 100003.
+  The test document, its bill of lading, its log rows and its stage file were then
+  removed, restoring 423 / 15 / 15 / 10,017.
+
+  `PARSE_DOCUMENT` is billed per page rather than per token, so its token columns are
+  left `NULL` rather than filled with a guess.
+
+### Residual, not fixed
+
+A full 7-day window could itself reach the limit, and the gate still suppresses
+**all** severities when it trips — a saturated queue of `MEDIUM` alerts can therefore
+still delay `HIGH`-severity detection. Making the `HIGH` rules bypass the gate means
+restructuring the `IF`/`ELSE` around five separate `INSERT` statements, which is not a
+change worth making unverified this close to the deadline. The window fix removes the
+permanent latch, which was the actual defect.
 
 A third, smaller observation: deleting a row from `BILL_OF_LADING_EXTRACTED` and
 reprocessing the file produced a **second** `BILL_OF_LADING` row for the same

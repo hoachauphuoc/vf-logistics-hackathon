@@ -39,7 +39,7 @@ Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowf
 
 Direct app link (after login): `https://app.snowflake.com/dpyxiqz-fn71223/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
 
-This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 33 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
+This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 34 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
 
 **Credential hygiene.** An earlier revision of this README contained the evaluator password in plain text, which put it in the public commit history from `4c3f6ab` onward — 18 of 38 commits. Removing it from the current files reduces exposure but does not undo it, since any historical blob is still one `git show` away. The credential was therefore **rotated**, and the rotation was verified rather than assumed: the leaked value is now rejected at login (`errno 250001`) while the replacement authenticates as `HACKATHON_JUDGE` / `HACKATHON_JUDGE_ROLE`. The current password is supplied only through the submission form. Login history over the exposure window shows a single password authentication, from the developer's own IP, so there is no evidence the leaked value was used. `keys/` is also now ignored as a directory rather than relying on the `*.p8` pattern alone.
 
@@ -418,12 +418,27 @@ But spending either amount would have bought nothing:
 
 Both procedures were rewritten: the single check now persists the flag and returns the keys the UI actually reads, and the batch check evaluates the rules set-based over still-unchecked rows, treats `P_HOURS <= 0` as all time, and reports `not_checked_remaining` so progress is visible. All 10,017 rows were then backfilled in under a second: **8,666 pass / 1,351 fail / 0 remaining**, and the stored flag agrees with a fresh evaluation of the rules on every row. The page's `B/L ID` selector was also raised from a hardcoded `10010` to the real maximum of `14315`, which had made every B/L above 10,010 unreachable.
 
+### Fix 1d: The end-to-end test's two stated limitations, root-caused
+
+The full-pipeline test (`docs/E2E_PIPELINE_TEST.md`) passed 10/10 but closed by naming two things it had *not* proved. Both turned out to be real defects rather than test artefacts.
+
+**The fraud detector had switched itself off permanently.** `WORKFLOW_DETECT_AND_ACT` sized its backpressure queue as *every* `OPEN` `HIGH`/`MEDIUM` alert ever raised, with no time bound. That count only grows, so the first time the lifetime backlog crossed `P_QUEUE_LIMIT` the gate latched shut for good: at 106 open alerts against a limit of 100, every run returned `throttled: true` and added nothing, and no detection rule would ever execute again. The test read this as backpressure working correctly, which is exactly how it hides. Backpressure should measure the queue a human could still plausibly be working, so it is now a **7-day rolling window** — the same 106 alerts are 47 inside it. Verified: the workflow returned `{"throttled":false,"new_alerts":8,"high_severity_open":4}` where it had previously returned zero alerts on every invocation.
+
+**The AI FinOps page was understating real spend.** `PROCESS_BL_DOCUMENTS` makes two Cortex calls per document — `PARSE_DOCUMENT` for OCR and `COMPLETE` for field extraction — and logged neither, so a run issuing at least 20 Cortex calls added a single `AI_CALL_LOG` row. Both calls now write to the ledger with measured latency and, for `COMPLETE`, real token counts via `COUNT_TOKENS`. `PARSE_DOCUMENT` is billed per page rather than per token, so its token columns stay `NULL` instead of carrying a guess. Verified live on one document: exactly two rows, `BL_EXTRACTION_OCR` at 1,315 ms and `BL_EXTRACTION_JSON` at 15,445 ms with 1,082 input + 413 output = 1,495 tokens.
+
+**Fixing the logging exposed a third defect underneath it.** `AI_CALL_LOG` could not safely take new rows: `CALL_ID` was `autoincrement start 1 ... noorder` while seeded data already used ids up to 703, leaving **69 duplicate `CALL_ID`s and 66 duplicate `LOG_ID`s** — the same unenforced-primary-key trap as `FRAUD_ALERT.ALERT_ID` and `COMPLIANCE_CHECK_RESULT.CHECK_ID`. It also showed why burning the counter forward is not a real fix: `noorder` allocates ids from non-monotonic cached ranges, and two consecutive single-row inserts were measured receiving id 313 and then 651. Both columns are now backed by dedicated `SEQUENCE` objects starting at 100000, which also repairs the eleven other procedures that insert without naming `CALL_ID`, without editing any of them. The 423 historical rows were reloaded with dense ids and `HASH_AGG` over every non-id column is byte-identical to the pre-fix clone.
+
+Applied SQL, with assertions: `sql/workflows/section13_reliability_followups.sql`.
+
+One residual is recorded rather than papered over: a 7-day window can itself fill, and the gate still suppresses all severities when it trips, so a saturated `MEDIUM` queue can still delay `HIGH`-severity detection. Letting the `HIGH` rules bypass the gate means restructuring the `IF`/`ELSE` around five separate `INSERT` statements, which is not a change worth shipping unverified this close to the deadline.
+
 ### Fix 2: Merge External Sandbox Portal with Native Streamlit
 - **Mendix removed as the interface** — all operator functionality consolidated into Streamlit-in-Snowflake
 - Added **Process New PDFs on Stage** button: `CALL PROCESS_BL_DOCUMENTS()` runs Cortex extraction + auto-sync from the UI
 - Added **Ingest & Decide** button: triggers full `WORKFLOW_INGEST_AND_DECIDE()` from the UI
 - Added a **Review & Edit panel** that replicates the former Mendix edit screen: two-column layout with AI-extracted document details on the left and editable fields (container number, vessel name, arrival date, gross weight) on the right, plus AI-confidence display, anomaly alert, and **Approve / Reject / Sync to SAP** actions wired to `REVIEW_DOCUMENT` and `SAP_POST_FI_DOCUMENT`
 - Corrections are diffed against the AI output, so pressing Approve after editing automatically submits a `CORRECT` action carrying only the changed fields
+- **The Extracted Documents table no longer contradicts the metric above it.** The query ended in a hardcoded `LIMIT 20` while the "Extracted documents" tile counted the whole table, so with 25 documents on the stage the page showed `25` and then listed 20 — the five newest documents were simply invisible. Both now read the same set; the remaining cap of 500 is a guard against unbounded growth, and the page says so explicitly when it actually truncates rather than dropping rows silently.
 - Pipeline can also be triggered from the AI Chat sidebar
 
 ### Fix 3: Redesigned Chat Interface with Session History Persistence
@@ -469,7 +484,8 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 
 | Check | Result |
 |---|---|
-| Tables / views | 33 / 11 — all 11 views queried successfully (`COMPLIANCE_QUEUE` added for event-driven compliance) |
+| Tables / views | 34 / 11 — all 11 views queried successfully (`COMPLIANCE_QUEUE` added for event-driven compliance; `AI_CALL_LOG_BAK_IDFIX` is the pre-fix clone kept as rollback evidence for the id repair) |
+| Sequences | 3 — `AI_CALL_LOG_CALL_SEQ` / `AI_CALL_LOG_LOG_SEQ` replace the duplicate-producing `noorder` identity columns |
 | Streams | 7 — one per task, so no two tasks race to consume the same offset |
 | Procedures / functions | 52 / 10 |
 | `BILL_OF_LADING` rows | 10,017 |
@@ -504,6 +520,11 @@ Full solution audit run against `DPYXIQZ-FN71223`:
 | Single check returns a usable verdict | `status` is `PASS`/`FAIL`/`NOT_FOUND` and `issues` lists violations, so the page stops showing every result as FAILED |
 | `COMPLIANCE_CHECK_RESULT.CHECK_ID` uniqueness | 0 duplicates across 10,025 rows after renumbering the pre-existing collision and clearing the autoincrement counter |
 | Alert sentinel removed | `ALERT` and `CONFIDENCE_SCORE` now agree with `BL_DOC_ALERT`/`BL_DOC_CONFIDENCE` on every row in all three statuses: 0 mismatches (previously 7 rows stored the English string `'No anomalies detected'` instead of NULL) |
+| Fraud detection is no longer latched off | `WORKFLOW_DETECT_AND_ACT()` returns `throttled: false` with `new_alerts: 8`; before the window fix it returned `throttled: true` with `new_alerts: 0` on every invocation. Windowed queue 47 vs lifetime 106 against a limit of 100 |
+| Extraction Cortex calls are logged | One document produces exactly 2 `AI_CALL_LOG` rows — `BL_EXTRACTION_OCR` (1,315 ms) and `BL_EXTRACTION_JSON` (15,445 ms, 1,082 + 413 = 1,495 tokens). Previously an entire 10-document run added 1 row |
+| `AI_CALL_LOG.CALL_ID` uniqueness | 0 duplicates across 423 rows, down from 69 duplicate `CALL_ID`s and 66 duplicate `LOG_ID`s; new inserts receive 100000, 100001 monotonically |
+| Id repair changed only ids | `HASH_AGG` over all 13 non-id columns is identical (`-1196039364847845594`) before and after the rebuild, so no payload was altered |
+| Documents table matches its own metric | The Extracted Documents query no longer stops at 20 rows while the tile counts the full table |
 | Translation key parity | 346 keys defined for EN, VN and JA with identical key sets; only `f_bl_id` is intentionally identical in all three (it is an identifier) |
 | Language conditionals in pages | 0 across `app.py` and all six pages, down from 38 (28 of which had no Japanese branch) |
 | Translation placeholder parity | 0 mismatches — every `{}` placeholder appears in all three languages of every key |

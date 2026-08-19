@@ -1,0 +1,36 @@
+Fix the two limitations the E2E test reported, plus a third found underneath
+
+The full-pipeline test passed 10/10 but closed by naming two things it had not
+proved. Both were real defects.
+
+The fraud detector had latched itself off permanently. WORKFLOW_DETECT_AND_ACT
+sized its backpressure queue as every OPEN HIGH/MEDIUM alert ever raised, with
+no time bound, and that count only grows. At 106 open alerts against a limit of
+100, every run returned throttled=true and added nothing, so no detection rule
+would ever execute again. The test read this as backpressure working correctly,
+which is exactly how it hides. The queue is now a 7-day rolling window; the same
+106 alerts are 47 inside it, and the workflow returns throttled=false with 8 new
+alerts where it previously returned zero on every invocation.
+
+The AI FinOps page understated real spend because PROCESS_BL_DOCUMENTS made two
+Cortex calls per document and logged neither. Both now write to AI_CALL_LOG with
+measured latency, and COMPLETE carries real token counts via COUNT_TOKENS.
+PARSE_DOCUMENT is billed per page, so its token columns stay NULL rather than
+carrying a guess. Verified live on one document: exactly two rows.
+
+Adding that logging exposed a third defect. AI_CALL_LOG.CALL_ID was
+autoincrement start 1 noorder while seeded data already used ids to 703, leaving
+69 duplicate CALL_IDs and 66 duplicate LOG_IDs - the same unenforced-primary-key
+trap as FRAUD_ALERT.ALERT_ID. It also showed why burning the counter forward is
+not a fix: noorder allocates from non-monotonic cached ranges, and consecutive
+single-row inserts were measured receiving id 313 then 651. Both columns now
+default to dedicated sequences, which repairs the eleven other procedures that
+insert without naming CALL_ID without editing any of them. HASH_AGG over every
+non-id column is identical to the pre-fix clone.
+
+Also fixed the Extracted Documents table, which stopped at 20 rows while the
+metric above it counted the whole table, so 25 documents displayed as "25" and
+then listed 20 and the newest five were invisible.
+
+Demo baseline restored after every verification: 423 log rows, 496 alerts,
+15 documents, 15 stage PDFs, 10,017 bills, empty compliance queue.

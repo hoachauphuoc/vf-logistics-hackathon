@@ -987,8 +987,6 @@ SELECT (SELECT COUNT(*) FROM MENDIX_APP.AGENTS.COMPLIANCE_QUEUE) AS QUEUE_ROWS,
 --   12b fix. Existing rows keep whatever they had; re-extracting them would mean
 --   deleting and reprocessing, and SYNC_EXTRACTED_TO_BILL_OF_LADING does not
 --   deduplicate, so that would leave a second BILL_OF_LADING row per document.
--- * AI_CALL_LOG does not record the extraction calls. A run that made at least 20
---   Cortex calls added one row, so the FinOps page understates real usage.
 -- * ALERT_TYPE holds both 'DUPLICATE_BL' (4 rows) and 'DUPLICATE_BL_NUMBER'
 --   (4 rows) for the same condition - a pre-existing enum split, unrelated to
 --   these fixes, not consolidated here to keep this change reviewable.
