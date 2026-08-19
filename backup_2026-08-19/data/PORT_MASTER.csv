@@ -1,0 +1,24 @@
+"PORT_CODE","PORT_NAME","COUNTRY","COUNTRY_CODE","LATITUDE","LONGITUDE","PORT_TYPE","TIMEZONE","IS_ACTIVE"
+"AEJEA","Jebel Ali","United Arab Emirates","AE",25.0118,55.0618,"Seaport","Asia/Dubai",true
+"BEANR","Antwerp","Belgium","BE",51.2213,4.4051,"Seaport","Europe/Brussels",true
+"CNNGB","Ningbo","China","CN",29.8683,121.544,"Seaport","Asia/Shanghai",true
+"CNSHA","Shanghai","China","CN",31.2304,121.4737,"Seaport","Asia/Shanghai",true
+"DEHAM","Hamburg","Germany","DE",53.5511,9.9937,"Seaport","Europe/Berlin",true
+"GBFXT","Felixstowe","United Kingdom","GB",51.9539,1.3512,"Seaport","Europe/London",true
+"HKHKG","Hong Kong","Hong Kong","HK",22.3193,114.1694,"Seaport","Asia/Hong_Kong",true
+"INMUN","Mundra","India","IN",22.8394,69.722,"Seaport","Asia/Kolkata",true
+"JPTYO","Tokyo","Japan","JP",35.6762,139.6503,"Seaport","Asia/Tokyo",true
+"JPYOK","Yokohama","Japan","JP",35.4437,139.638,"Seaport","Asia/Tokyo",true
+"KRPUS","Busan","South Korea","KR",35.1796,129.0756,"Seaport","Asia/Seoul",true
+"MYPKG","Port Klang","Malaysia","MY",3,101.4,"Seaport","Asia/Kuala_Lumpur",true
+"NLRTM","Rotterdam","Netherlands","NL",51.9225,4.4792,"Seaport","Europe/Amsterdam",true
+"SGSIN","Singapore","Singapore","SG",1.2644,103.82,"Seaport","Asia/Singapore",true
+"THLCH","Laem Chabang","Thailand","TH",13.0827,100.8833,"Seaport","Asia/Bangkok",true
+"USLAX","Los Angeles","United States","US",33.7292,-118.262,"Seaport","America/Los_Angeles",true
+"USLGB","Long Beach","United States","US",33.755,-118.217,"Seaport","America/Los_Angeles",true
+"USNYC","New York","United States","US",40.67,-74.04,"Seaport","America/New_York",true
+"VNHPH","Hai Phong","Vietnam","VN",20.8449,106.6881,"Seaport","Asia/Ho_Chi_Minh",true
+"VNSGN","Ho Chi Minh City (Saigon)","Vietnam","VN",10.7626,106.6602,"Seaport","Asia/Ho_Chi_Minh",true
+"VNDAD","Da Nang","Vietnam","VN",16.0678,108.2208,"Seaport","Asia/Ho_Chi_Minh",true
+"VNVUT","Cai Mep - Vung Tau","Vietnam","VN",10.5417,107.0333,"Seaport","Asia/Ho_Chi_Minh",true
+"VNUIH","Qui Nhon","Vietnam","VN",13.783,109.22,"Seaport","Asia/Ho_Chi_Minh",true

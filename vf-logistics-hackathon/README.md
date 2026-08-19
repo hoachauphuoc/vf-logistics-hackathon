@@ -31,19 +31,19 @@ Unlike the removed Mendix sandbox, a Streamlit-in-Snowflake app requires a Snowf
 | Field | Value |
 |---|---|
 | Login URL | https://app.snowflake.com |
-| Account | `DPYXIQZ-FN71223` |
+| Account | `SIKIWEQ-LP92053` |
 | User | `HACKATHON_JUDGE` |
 | Password | *provided in the hackathon submission form — deliberately not stored in this public repository* |
 | Role | `HACKATHON_JUDGE_ROLE` (applied automatically) |
 | App | Projects → Streamlit → **VF Logistics Dashboard** |
 
-Direct app link (after login): `https://app.snowflake.com/dpyxiqz-fn71223/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
+Direct app link (after login): `https://app.snowflake.com/sikiweq-lp92053/#/streamlit-apps/MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`
 
-This account was **verified under true least privilege** on 2026-08-18 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 34 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
+This account was **verified under true least privilege** on 2026-08-19 (`USE SECONDARY ROLES NONE`, so no ACCOUNTADMIN privileges could leak into the test): it can read all 33 tables and 11 views it is granted, call `CORTEX.COMPLETE`, run `REVIEW_DOCUMENT` and `GET_PDF_URL`, execute the full pipeline, save and reload chat conversations, and write chat cost telemetry to `AI_CALL_LOG`. It is correctly **denied** direct access to `CHAT_MESSAGE`, reaching it only through owner-rights procedures. All workflow procedures are `EXECUTE AS OWNER`, so the evaluator can exercise the whole system while holding only read privileges on the underlying tables.
 
-**Credential hygiene.** An earlier revision of this README contained the evaluator password in plain text, which put it in the public commit history from `4c3f6ab` onward — 18 of 38 commits. Removing it from the current files reduces exposure but does not undo it, since any historical blob is still one `git show` away. The credential was therefore **rotated**, and the rotation was verified rather than assumed: the leaked value is now rejected at login (`errno 250001`) while the replacement authenticates as `HACKATHON_JUDGE` / `HACKATHON_JUDGE_ROLE`. The current password is supplied only through the submission form. Login history over the exposure window shows a single password authentication, from the developer's own IP, so there is no evidence the leaked value was used. `keys/` is also now ignored as a directory rather than relying on the `*.p8` pattern alone.
+**Credential hygiene.** An earlier revision of this README contained the evaluator password in plain text, which put it in the public commit history from `4c3f6ab` onward — 18 of 38 commits. Removing it from the current files reduces exposure but does not undo it, since any historical blob is still one `git show` away. The credential was **rotated on the old account** on 2026-08-18, and rotated again on migration to this account on 2026-08-19 — the judge password is unique to `SIKIWEQ-LP92053` and was never derived from or equal to any earlier value. The current password is supplied only through the submission form. `keys/` is also ignored as a directory rather than relying on the `*.p8` pattern alone.
 
-> **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture** — it is not deployed and is not required to run the solution. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) now lives in the Streamlit app. The `mendix-integration/` folder is retained purely as reference for the JDBC key-pair auth pattern. See *Known Limitations* in Section 11 for the two UX trade-offs this consolidation introduced.
+> **Note on Mendix**: The original submission used a Mendix sandbox as the operator UI. Per evaluator feedback ("Merge External Sandbox Portal with Native Streamlit Application"), Mendix has been **removed from the architecture entirely** — it is not deployed, not required to run the solution, and was not migrated to this account. Every operator function it provided (document processing, field editing, approve/reject, SAP sync, chat) lives in the Streamlit app. The `mendix-integration/` folder is retained purely as historical reference for the JDBC key-pair auth pattern and points at the decommissioned account; it is not part of the live system. See *Known Limitations* in Section 11 for the two UX trade-offs the Streamlit consolidation introduced.
 
 ## 1. Problem & Business Impact
 
@@ -168,7 +168,7 @@ The home-dashboard "Run Pipeline" demo shortcut was deliberately removed from th
 
 ### Option E — From Python/Snowpark
 ```bash
-python python/snowpark_risk_scoring.py --connection dpyxiqz-fn71223 --run-workflow
+python python/snowpark_risk_scoring.py --connection sikiweq-lp92053 --run-workflow
 ```
 
 **Expected output** (~6-15s execution):
@@ -557,8 +557,27 @@ ALTER TASK MENDIX_APP.AGENTS.TASK_PROCESS_NEW_BL SUSPEND;
 --        TASK_NOTIFY_HIGH_FRAUD, TASK_GENERATE_WEEKLY_INSIGHTS, TASK_REFRESH_PDF_URLS
 ```
 
+### Third migration (2026-08-19): `DPYXIQZ-FN71223` → `SIKIWEQ-LP92053`
+
+The trial account's free balance dropped from $398 to $48 across 17–19/8. Investigation attributed **~87% of that burn to the development tooling's own model usage (`SNOWFLAKE_COCO_DESKTOP`), not the application** — the app itself costs roughly 5 credits/day, so having it judged is cheap; running the migration in an interactive session is what is expensive. The migration was executed with a cheaper model for exactly that reason.
+
+Full detail, including every defect this migration found: [`docs/ACCOUNT_MIGRATION_2026-08-19.md`](./docs/ACCOUNT_MIGRATION_2026-08-19.md). Summary:
+
+| Check | Result |
+|---|---|
+| Objects restored | 33 tables, 11 views, 52 procedures, 10 functions, 13 sequences, 3 dynamic tables, 7 streams, 7 tasks |
+| Data integrity | `HASH_AGG(*)` identical to the pre-migration snapshot for all 16 data-bearing tables — 0 byte of payload drift |
+| Stage-only PDFs rescued | 5 of 15 stage PDFs existed nowhere else (`BATCH_A_VALID.pdf`, `BATCH_B_ERROR.pdf`, 3 `mendix_upload_*.pdf`); all 15 recovered and committed to git for the first time |
+| Marketplace listing | Already present on the new account as `SNOWFLAKE_PUBLIC_DATA_FREE` — no re-request needed; 655,417 FX rows and 2,394 sanctions rows confirmed before use |
+| `GET_DDL` blind spots found | Stages and the Cortex Search Service are not included in `GET_DDL('SCHEMA', ..., TRUE)` and had to be hand-written from `SHOW STAGES` / a separate `GET_DDL('CORTEX SEARCH SERVICE', ...)` call |
+| Two functions silently dropped by a batched `CREATE FUNCTION` | `BL_DOC_ALERT` and `BL_DOC_CONFIDENCE` did not exist after a 10-statement batch reported success on its last statement; recreated individually and reverified with a clean case (confidence 100) and a 5-rule-failure case (confidence 17) |
+| A new instance of the recurring identity-collision bug | `NOTIFICATION_LOG`, `SAP_FI_DOCUMENT`, `WORKFLOW_AUDIT_LOG` already had duplicate ids **in the source data itself** (32/2/78 duplicated ids) — pre-existing on the old account, never previously detected, harmless only because nothing does a point lookup on those columns |
+| `CREATE OR REPLACE SEQUENCE` breaks table `DEFAULT` bindings | Recreating `AI_CALL_LOG_CALL_SEQ` to burn it past a collision rebound the sequence to a new internal object id, and the table's `DEFAULT ...NEXTVAL` silently stopped resolving on the very next insert. Fixed with `ALTER TABLE ... ALTER COLUMN ... SET DEFAULT`, re-pointing the column at the new sequence object explicitly |
+| End-to-end pipeline proven live, not just restored | One PDF run through `PROCESS_BL_DOCUMENTS()` on the new account auto-triggered the full stream→task chain (ingest → promote → detect → investigate → screen → remediate) with no manual step beyond the upload, then rolled back to the exact pre-test baseline |
+| Judge access re-verified | 115 grants replayed; `HACKATHON_JUDGE_ROLE` tested under `USE SECONDARY ROLES NONE` — reads `BILL_OF_LADING`, calls `SYSTEM_HEALTH_CHECK()`, and is correctly denied direct `CHAT_MESSAGE` access |
+| New judge password | Rotated again for this account; supplied only via the submission form |
+
 ### Infrastructure
-- Migrated to new Snowflake trial account (`DPYXIQZ-FN71223`, expires 2026-09-04) with full schema, data, and all 52 procedures
+- Migrated to a third Snowflake trial account (`SIKIWEQ-LP92053`) on 2026-08-19 with full schema, data, and all 52 procedures — see migration detail above
 - Added `environment.yml` to the Streamlit stage root to declare the `plotly` dependency (fixes `ModuleNotFoundError` on the dashboard)
-- Generated new RSA key pair for `MENDIX_SERVICE_USER` key-pair JWT authentication
-- Mendix integration code retained in `mendix-integration/` as **reference only** — it is not deployed, not the entry point, and not required to run the solution. It documents the JDBC key-pair auth pattern for reviewers who want to see how the original external portal authenticated.
+- Mendix integration was **not migrated** to this account — per explicit decision, Mendix is dropped entirely rather than kept as a reference. `mendix-integration/` now documents a decommissioned account only.

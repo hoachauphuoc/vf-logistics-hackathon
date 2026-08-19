@@ -1,0 +1,35 @@
+"REPORT_ID","ANOMALY_TYPE","SEVERITY","BL_IDS","BUSINESS_EXPLANATION","RECOMMENDED_ACTIONS","GENERATED_BY","LANGUAGE","CREATED_AT","STATUS"
+100,"DUPLICATE_BL_NUMBER","MEDIUM",""," **What happened:**
+The system detected two or more shipments using the same Bill of Lading (BL) number, MAEU2026001. Each shipment should have a unique BL number for tracking and accounting purposes.
+
+**Why it matters:**
+Duplicate BL numbers can indicate a clerical error or potential fraud. It may lead to confusion in tracking shipments, incorrect inventory management, and financial discrepancies. In severe cases, it could signify an attempt to duplicate or hide shipment information for illicit activities.
+
+**Recommended actions:**
+1. **Investigate:** Immediately review all shipments associated with BL number MAEU2026001.
+2. **Verify:** Contact the shipper and carrier to confirm the authenticity of each shipment.
+3. **Correct:** If a clerical error is found, update the system with the correct BL numbers.
+4. **Monitor:** Closely watch for any further duplicate BL numbers and assess internal processes to prevent future occurrences.
+5. **Report:** If fraud is suspected, report it to the relevant authorities and follow your company's fraud response protocol.","","AI_AUTO","EN","2026-08-18 08:28:03.545","NEW"
+101,"DUPLICATE_BL_NUMBER","MEDIUM",""," **What happened:**
+The system detected two or more shipments using the same Bill of Lading (BL) number, MAEU2026001. Each shipment should have a unique BL number.
+
+**Why it matters:**
+Duplicate BL numbers can indicate a clerical error or potential fraud. It may lead to confusion, delayed shipments, or financial losses if goods are misrouted or claims are made against the same BL.
+
+**Recommended actions:**
+1. **Investigate**: Verify the details of both shipments using MAEU2026001.
+2. **Contact**: Reach out to the parties involved (shipper, consignee, carrier) to confirm the authenticity of the BL.
+3. **Correct**: If a clerical error, correct the BL number for one of the shipments.
+4. **Monitor**: If potential fraud is suspected, monitor related activities and alert relevant authorities.
+5. **Review**: Assess internal controls to prevent future duplications.","","AI_AUTO","EN","2026-08-18 18:28:01.185","NEW"
+200,"DUPLICATE_BL_NUMBER","MEDIUM","","1) **What happened:** The system detected two or more shipments using the same Bill of Lading (BL) number, MAEU2026001. Each shipment should have a unique BL number for tracking purposes.
+
+2) **Why it matters:** Duplicate BL numbers can indicate a clerical error or potential fraud. It may lead to confusion, delayed shipments, or financial losses if goods are misrouted or claims are made against the wrong BL.
+
+3) **Recommended actions:**
+   - Verify the shipment details associated with the duplicate BL number.
+   - Contact the shipper or freight forwarder to confirm the authenticity of the BL.
+   - If a clerical error is found, correct the BL number for one of the shipments.
+   - If fraud is suspected, escalate the issue to the relevant authorities for further investigation.
+   - Monitor future shipments to ensure unique BL numbers are used.","","AI_AUTO","EN","2026-08-19 00:10:12.274","NEW"

@@ -1,0 +1,731 @@
+"DOC_ID","FILE_NAME","FILE_PATH","FILE_SIZE_BYTES","UPLOAD_TIMESTAMP","BL_NUMBER","CONTAINER_NUMBER","VESSEL_NAME","VOYAGE_NUMBER","SHIPPER_NAME","CONSIGNEE_NAME","NOTIFY_PARTY","PORT_OF_LOADING","PORT_OF_DISCHARGE","COMMODITY_DESC","HS_CODE","GROSS_WEIGHT_KG","NET_WEIGHT_KG","PACKAGE_COUNT","PACKAGE_TYPE","FREIGHT_CHARGES","FREIGHT_CURRENCY","DATE_OF_ISSUE","CONFIDENCE_SCORE","STATUS","ANOMALY_FLAGS","RAW_EXTRACTED_JSON","RAW_TEXT","AI_MODEL_USED","PROCESSING_TIME_MS","PROCESSED_AT","REVIEWED_BY","REVIEWED_AT","REVIEW_NOTES","FINAL_STATUS","CORRECTED_JSON","PDF_PRESIGNED_URL","PDF_URL_EXPIRY","ALERT","ALERT_RESPONSE","CARRIER_NAME","SYNCED_TO_BL_AT","BL_ID"
+1,"bill_of_lading/BL_MSC_MSCU2026012_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_MSC_MSCU2026012_ERROR.pdf",3559,"2026-07-22 21:10:04.986","MSCU2026012","MSKU7891234","MAERSK SENTOSA","","","","","","","","",24500,"","","","","USD","2026-07-28",83,"Pending_Review","","{""anomalies"":[],""bl_number"":""MSCU2026012"",""container_number"":""MSCU6677889"",""date_of_issue"":""2026-07-12"",""eta"":""2026-08-10"",""gross_weight_kg"":16200,""vessel_name"":""""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MSC - Mediterranean Shipping Company S.A.
+12-14 Chemin Rieu, 1208 Geneva, Switzerland SCAC: MSCU | CARRIER CODE: MSC
+BOOKING / B/L INFORMATION
+B/L Number: MSCU2026012
+Booking Number: BKG-MSC-6612345
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-12
+Place of Issue: Hai Phong, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: HAI PHONG FOOTWEAR EXPORT JSC
+Address: 45 Lach Tray Street, Ngo Quyen, Hai Phong, Vietnam
+Tax ID: 0200987654
+Contact: +84 225 384 2000
+CONSIGNEE
+Company: AMSTERDAM RETAIL GROUP BV
+Address: Keizersgracht 520, 1017 EK Amsterdam, Netherlands
+VESSEL / VOYAGE DETAILS
+Vessel Name:
+IMO Number:
+Voyage Number:
+Port of Loading: HAI PHONG PORT, VIETNAM (VNHPH)
+Port of Discharge: PORT OF ROTTERDAM, NETHERLANDS (NLRTM)
+ETD (Estimated Departure): 2026-07-15
+ETA (Estimated Arrival): 2026-08-10
+CONTAINER / CARGO DETAILS
+Container Number: MSCU6677889
+Container Size/Type: 40' Standard Dry (40DRY/8'6"")
+Seal Number: SL-223344
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MSC - Mediterranean Shipping Company S.A.
+12-14 Chemin Rieu, 1208 Geneva, Switzerland SCAC: MSCU | CARRIER CODE: MSC
+DESCRIPTION OF GOODS
+Commodity: SPORTS FOOTWEAR - RUNNING SHOES
+HS Code: 6404.11.00
+Number of Packages: 2,000 CARTONS
+Gross Weight: 16,200 KGS
+Net Weight: 15,800 KGS
+Measurement (Volume): 64.0 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT COLLECT
+Total Charges: USD 3,850.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-12 Place: Hai Phong, Vietnam
+Page 2","mistral-large2",5060,"2026-07-22 21:10:04.986","demo_user","2026-07-22 21:14:32.522","Fixed during demo","CORRECTED","{""arrival_date"":""2026-07-28"",""container_number"":""MSKU7891234"",""gross_weight_kg"":24500,""vessel_name"":""MAERSK SENTOSA""}","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_MSC_MSCU2026012_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143626Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=a6a433bbdb83ab3e30a0556dc2de2f2858e49fd51606f2d0c54ab50960d9e6ee","2026-08-18 08:36:26.672","CarrierMismatch","Document passed all validation checks.","","2026-07-31 20:12:44.739",14300
+3,"bill_of_lading/BL_MAERSK_MAEU2026011_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_MAERSK_MAEU2026011_ERROR.pdf",3553,"2026-07-22 21:10:16.640","MAEU2026011","MSK@#$%789","MAERSK SENTOSA","","","","","","","","",24500,"","","","","USD","2026-07-15",83,"Pending_Review","","{""anomalies"":[],""bl_number"":""MAEU2026011"",""container_number"":""MSK@#$%789"",""date_of_issue"":""2026-07-15"",""eta"":""2026-07-28"",""gross_weight_kg"":24500,""vessel_name"":""MAERSK SENTOSA""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+BOOKING / B/L INFORMATION
+B/L Number: MAEU2026011
+Booking Number: BKG-MSK-5501234
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-15
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: BINH DUONG STEEL CO., LTD
+Address: KCN Song Than, Thu Dau Mot, Binh Duong, Vietnam
+Tax ID: 3701234567
+Contact: +84 274 378 9000
+CONSIGNEE
+Company: OSAKA METAL WORKS CO., LTD
+Address: 5-2-1 Nanko-Kita, Suminoe-ku, Osaka, Japan
+VESSEL / VOYAGE DETAILS
+Vessel Name: MAERSK SENTOSA
+IMO Number: 9876543
+Voyage Number: MS-268E
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF OSAKA, JAPAN (JPOSA)
+ETD (Estimated Departure): 2026-07-18
+ETA (Estimated Arrival): 2026-07-28
+CONTAINER / CARGO DETAILS
+Container Number: MSK@#$%789
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number: SL-998877
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+DESCRIPTION OF GOODS
+Commodity: STEEL COILS - HOT ROLLED
+HS Code: 7208.36.00
+Number of Packages: 12 COILS
+Gross Weight: 24,500 KGS
+Net Weight: 24,000 KGS
+Measurement (Volume): 38.0 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Total Charges: USD 4,200.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-15 Place: Ho Chi Minh City, Vietnam
+Page 2","mistral-large2",5313,"2026-07-22 21:10:16.640","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_MAERSK_MAEU2026011_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143627Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=a2a32cf0579cec3a5e119fb008e0c53d0f148b6fe7e31fff7d0025f999c52926","2026-08-18 08:36:27.163","ContainerNumber","ContainerNumber is invalid because it contains prohibited characters @ and #. The value 'MSK@#$%789' violates the rule that container numbers must not contain @ # $.","","2026-07-31 20:12:46.111",14302
+4,"bill_of_lading/BL_EVERGREEN_EGLV2026015_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_EVERGREEN_EGLV2026015_ERROR.pdf",3536,"2026-07-22 21:10:28.961","EGLV2026015","XXXX0000000","","","","","","","","","",0,"","","","","USD","2026-07-18",50,"Pending_Review","","{""anomalies"":[],""bl_number"":""EGLV2026015"",""container_number"":""XXXX0000000"",""date_of_issue"":""2026-07-18"",""eta"":""2024-01-15"",""gross_weight_kg"":0,""vessel_name"":""""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Evergreen Marine Corporation
+166 Min Sheng East Road, Taipei, Taiwan SCAC: EGLV | CARRIER CODE: EVERGREEN
+BOOKING / B/L INFORMATION
+B/L Number: EGLV2026015
+Booking Number: BKG-EG-9956789
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-18
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: LONG AN GARMENT FACTORY CO., LTD
+Address: KCN Duc Hoa, Long An Province, Vietnam
+Tax ID: 1101234567
+Contact: +84 272 385 4000
+CONSIGNEE
+Company: SYDNEY FASHION IMPORTS PTY LTD
+Address: 42 George Street, Sydney NSW 2000, Australia
+VESSEL / VOYAGE DETAILS
+Vessel Name:
+IMO Number:
+Voyage Number:
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF SYDNEY, AUSTRALIA (AUSYD)
+ETD (Estimated Departure): 2026-07-21
+ETA (Estimated Arrival): 2024-01-15
+CONTAINER / CARGO DETAILS
+Container Number: XXXX0000000
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number:
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Evergreen Marine Corporation
+166 Min Sheng East Road, Taipei, Taiwan SCAC: EGLV | CARRIER CODE: EVERGREEN
+DESCRIPTION OF GOODS
+Commodity: WOMEN'S CLOTHING - ASSORTED DRESSES
+HS Code: 6204.44.00
+Number of Packages: 1,500 CARTONS
+Gross Weight: 0 KGS
+Net Weight: 0 KGS
+Measurement (Volume): 0 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT COLLECT
+Total Charges: USD 0.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: NO
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-18 Place: Ho Chi Minh City, Vietnam
+Page 2","mistral-large2",12020,"2026-07-22 21:10:28.961","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_EVERGREEN_EGLV2026015_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143627Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=bfcba73f3fb72dc72bade493861da37d585ead314f246b91b9e27cc09ce0b1d4","2026-08-18 08:36:27.707","ContainerNumber; VesselName; GrossWeightKg","ContainerNumber 'XXXX0000000' starts with 'XXXX'. VesselName is empty (trimmed length 0, which is <=2). GrossWeightKg is 0 (not strictly between 0 and 100000).","","2026-07-31 20:12:46.820",14303
+8,"bill_of_lading/BL_HAPAG_LLOYD_HLCU2026014_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_HAPAG_LLOYD_HLCU2026014_ERROR.pdf",3568,"2026-07-22 21:10:55.050","HLCU2026014","HLXU8899001","BERLIN EXPRESS","","","","","","","","",0,"","","","","USD","2026-07-16",83,"Pending_Review","","{""anomalies"":[],""bl_number"":""HLCU2026014"",""container_number"":""HLXU8899001"",""date_of_issue"":""2026-07-16"",""eta"":""2026-07-27"",""gross_weight_kg"":0,""vessel_name"":""BERLIN EXPRESS""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Hapag-Lloyd AG
+Ballindamm 25, 20095 Hamburg, Germany SCAC: HLCU | CARRIER CODE: HAPAG-LLOYD
+BOOKING / B/L INFORMATION
+B/L Number: HLCU2026014
+Booking Number: BKG-HL-8845678
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-16
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: DONG NAI RUBBER EXPORT CO., LTD
+Address: KCN Bien Hoa 1, Dong Nai Province, Vietnam
+Tax ID: 3601987654
+Contact: +84 251 383 6000
+CONSIGNEE
+Company: YOKOHAMA RUBBER TRADING INC.
+Address: 2-1 Oiwake, Hiratsuka, Kanagawa 254-0016, Japan
+VESSEL / VOYAGE DETAILS
+Vessel Name: BERLIN EXPRESS
+IMO Number: 9501332
+Voyage Number: BE-057W
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF YOKOHAMA, JAPAN (JPYOK)
+ETD (Estimated Departure): 2026-07-19
+ETA (Estimated Arrival): 2026-07-27
+CONTAINER / CARGO DETAILS
+Container Number: HLXU8899001
+Container Size/Type: 20' Standard Dry (20DRY/8'6"")
+Seal Number: SL-887766
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Hapag-Lloyd AG
+Ballindamm 25, 20095 Hamburg, Germany SCAC: HLCU | CARRIER CODE: HAPAG-LLOYD
+DESCRIPTION OF GOODS
+Commodity: NATURAL RUBBER (SVR 10, SVR 20) - SHEETS
+HS Code: 4001.22.00
+Number of Packages: 400 BALES
+Gross Weight: 0 KGS
+Net Weight: 0 KGS
+Measurement (Volume): 30.0 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Total Charges: USD 2,350.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: NO
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-16 Place: Ho Chi Minh City, Vietnam
+Page 2","mistral-large2",5268,"2026-07-22 21:10:55.050","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_HAPAG_LLOYD_HLCU2026014_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143628Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=d20b4e8a9b9fa8c99cc0000164670906e2cf2812c0f151ae350a49f4cf72068e","2026-08-18 08:36:28.234","GrossWeightKg","GrossWeightKg is invalid because the value is 0, which violates the rule that it must be strictly greater than 0.","","2026-07-31 20:12:49.318",14307
+101,"bill_of_lading/mendix_upload_18137617165238521596.pdf","bill_of_lading/mendix_upload_18137617165238521596.pdf","","2026-07-27 07:29:11.384","","MSKU8731462","MAERSK EMERALD","","","","","","","","",24500,"","","","","USD","2025-01-27",83,"Pending_Review","","","","","","","","","Unit correction 2026-08-18: value was recorded in tonnes, converted to kg.","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/mendix_upload_18137617165238521596.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143628Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=f6337cb11929d66b8f8140fb3a786de715dfefd73d1a3734351dbcb95c974491","2026-08-18 08:36:28.778","BlNumber","Document passed all validation checks.","","2026-07-31 20:12:51.288",14310
+201,"bill_of_lading/mendix_upload_11628477475283606545.pdf","bill_of_lading/mendix_upload_11628477475283606545.pdf","","2026-07-29 07:35:17.783","","MSKU8731462","MAERSK EMERALD","","","","","","","","",24500,"","","","","USD","2025-01-27",83,"Pending_Review","","","","","","","","","Unit correction 2026-08-18: value was recorded in tonnes, converted to kg.","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/mendix_upload_11628477475283606545.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143629Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=84438a8ad73efbe3af253c6c29e585995f012c4ee917fefde7c95abfc198b1c1","2026-08-18 08:36:29.290","BlNumber","Document passed all validation checks.","","2026-07-31 20:12:51.921",14311
+301,"bill_of_lading/mendix_upload_2938069892618352183.pdf","bill_of_lading/mendix_upload_2938069892618352183.pdf","","2026-07-30 08:05:15.131","","MSKU8731462","MAERSK EMERALD","","","","","","","","",24500,"","","","","USD","2025-01-27",83,"Pending_Review","","","","","","","","","Unit correction 2026-08-18: value was recorded in tonnes, converted to kg.","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/mendix_upload_2938069892618352183.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143629Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=f51ced39f7391bd5662195e3de2740a57ca9265dd01485897a8098892d97e3f8","2026-08-18 08:36:29.832","BlNumber","Document passed all validation checks.","","2026-07-31 20:12:52.593",14312
+2,"bill_of_lading/BL_COSCO_COSU2026013_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_COSCO_COSU2026013_ERROR.pdf",3528,"2026-07-22 21:10:10.935","COSU2026013","CCLU4455667","COSCO SHIPPING TAURUS","","","","","","","","",15000,"","","","","USD","2026-07-10",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""COSU2026013"",""container_number"":""CCLU4455667"",""date_of_issue"":""2026-07-10"",""eta"":""2025-03-01"",""gross_weight_kg"":15000,""vessel_name"":""COSCO SHIPPING TAURUS""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+COSCO SHIPPING Lines Co., Ltd
+378 Dong Da Ming Road, Shanghai 200080, China SCAC: COSU | CARRIER CODE: COSCO
+BOOKING / B/L INFORMATION
+B/L Number: COSU2026013
+Booking Number: BKG-COS-7734567
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-10
+Place of Issue: Da Nang, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: QUANG NAM CASHEW NUT CO., LTD
+Address: 88 Hung Vuong, Tam Ky, Quang Nam, Vietnam
+Tax ID: 4001234567
+Contact: +84 235 385 1000
+CONSIGNEE
+Company: SHANGHAI FOOD TRADING CO., LTD
+Address: 888 Pudong Ave, Shanghai 200120, China
+VESSEL / VOYAGE DETAILS
+Vessel Name: COSCO SHIPPING TAURUS
+IMO Number: 9783456
+Voyage Number: CT-055E
+Port of Loading: DA NANG PORT, VIETNAM (VNDAD)
+Port of Discharge: PORT OF SHANGHAI, CHINA (CNSHA)
+ETD (Estimated Departure): 2026-07-13
+ETA (Estimated Arrival): 2025-03-01
+CONTAINER / CARGO DETAILS
+Container Number: CCLU4455667
+Container Size/Type: 20' Standard Dry (20DRY/8'6"")
+Seal Number: SL-556677
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+COSCO SHIPPING Lines Co., Ltd
+378 Dong Da Ming Road, Shanghai 200080, China SCAC: COSU | CARRIER CODE: COSCO
+DESCRIPTION OF GOODS
+Commodity: ROASTED CASHEW NUTS, SALTED
+HS Code: 2008.19.10
+Number of Packages: 600 CARTONS
+Gross Weight: 15,000 KGS
+Net Weight: 14,400 KGS
+Measurement (Volume): 28.5 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Total Charges: USD 1,950.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-10 Place: Da Nang, Vietnam
+Page 2","mistral-large2",5631,"2026-07-22 21:10:10.935","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_COSCO_COSU2026013_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143630Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=616c80514ca294d76873b504d10b84eefb1b6ad4579512b51c066b87ee7afa28","2026-08-18 08:36:30.352","","Document passed all validation checks.","","2026-07-31 20:12:45.449",14301
+5,"bill_of_lading/BL_MAERSK_MAEU2026001_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_MAERSK_MAEU2026001_VALID.pdf",4160,"2026-07-22 21:10:34.631","MAEU2026001","MSKU7234561","MAERSK SENTOSA","","","","","","","","",12500,"","","","","USD","2026-07-15",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""MAEU2026001"",""container_number"":""MSKU7234561"",""date_of_issue"":""2026-07-15"",""eta"":""2026-08-05"",""gross_weight_kg"":12500,""vessel_name"":""MAERSK SENTOSA""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+BOOKING / B/L INFORMATION
+B/L Number: MAEU2026001
+Booking Number: BKG-MSK-4478901
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-15
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: VIETNAM ELECTRONICS CO., LTD
+Address: 45 Nguyen Hue Street, District 1, Ho Chi Minh City, Vietnam
+Tax ID: 0312456789
+Contact: +84 28 3825 1234
+CONSIGNEE
+Company: LA TECH DISTRIBUTION INC.
+Address: 1200 Harbor Blvd, Long Beach, CA 90802, USA
+Tax ID: US-EIN-87-1234567
+Contact: +1 562 435 2700
+NOTIFY PARTY
+Company: PACIFIC FREIGHT BROKERS LLC
+Address: 800 S Figueroa St, Los Angeles, CA 90017, USA
+Contact: +1 213 555 0142
+VESSEL / VOYAGE DETAILS
+Vessel Name: MAERSK SENTOSA
+IMO Number: 9876543
+Voyage Number: MS-267E
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF LOS ANGELES, USA (USLAX)
+Place of Delivery: LONG BEACH DISTRIBUTION CENTER, CA, USA
+ETD (Estimated Departure): 2026-07-18
+ETA (Estimated Arrival): 2026-08-05
+CONTAINER / CARGO DETAILS
+Container Number: MSKU7234561
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number: SL-928374 (Shipper's Seal)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+DESCRIPTION OF GOODS
+Commodity: ELECTRONIC COMPONENTS - LAPTOP MOTHERBOARDS (INTEL/AMD CHIPSET)
+HS Code: 8471.30.00
+Number of Packages: 450 CARTONS
+Package Type: CORRUGATED CARTON BOXES
+Gross Weight: 12,500 KGS
+Net Weight: 11,800 KGS
+VGM (Verified Gross Mass): 16,900 KGS (incl. container tare)
+Measurement (Volume): 55.8 CBM
+Declared Value: USD 890,000.00 (CIF Los Angeles)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Incoterms: CIF LOS ANGELES (Incoterms 2020)
+Currency: USD
+Ocean Freight: 3,450.00
+Total Charges: USD 5,120.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 1 (Weighing)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-15 Place: Ho Chi Minh City, Vietnam
+MAERSK LINE A/S - As Agent for the Carrier
+Page 2","mistral-large2",5155,"2026-07-22 21:10:34.631","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_MAERSK_MAEU2026001_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143630Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=394f1c7449c63b3454b32112fbd8e106aded06626ebbf1cf9254a13c07e4e133","2026-08-18 08:36:30.893","","Document passed all validation checks.","","2026-07-31 20:12:47.484",14304
+6,"bill_of_lading/BL_MSC_MSCU2026002_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_MSC_MSCU2026002_VALID.pdf",4170,"2026-07-22 21:10:40.493","MSCU2026002","MSCU4589012","MSC GULSUN","","","","","","","","",18400,"","","","","USD","2026-07-10",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""MSCU2026002"",""container_number"":""MSCU4589012"",""date_of_issue"":""2026-07-10"",""eta"":""2026-08-08"",""gross_weight_kg"":18400,""vessel_name"":""MSC GULSUN""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MSC - Mediterranean Shipping Company S.A.
+12-14 Chemin Rieu, 1208 Geneva, Switzerland SCAC: MSCU | CARRIER CODE: MSC
+BOOKING / B/L INFORMATION
+B/L Number: MSCU2026002
+Booking Number: BKG-MSC-9921344
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-10
+Place of Issue: Hai Phong, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: SAIGON TEXTILE GROUP JSC
+Address: 123 Le Loi Boulevard, Binh Duong Province, Vietnam
+Tax ID: 0301987654
+Contact: +84 274 382 5500
+CONSIGNEE
+Company: ROTTERDAM FASHION BV
+Address: Europaweg 120, 3199 LD Rotterdam, Netherlands
+Tax ID: NL-BTW-123456789B01
+Contact: +31 10 295 0000
+NOTIFY PARTY
+Company: EU LOGISTICS PARTNERS GmbH
+Address: Hafenstr 55, 20457 Hamburg, Germany
+Contact: +49 40 301 0000
+VESSEL / VOYAGE DETAILS
+Vessel Name: MSC GULSUN
+IMO Number: 9839430
+Voyage Number: GS-143W
+Port of Loading: HAI PHONG PORT, VIETNAM (VNHPH)
+Port of Discharge: PORT OF ROTTERDAM, NETHERLANDS (NLRTM)
+Place of Delivery: ROTTERDAM CFS WAREHOUSE, EUROPOORT
+ETD (Estimated Departure): 2026-07-13
+ETA (Estimated Arrival): 2026-08-08
+CONTAINER / CARGO DETAILS
+Container Number: MSCU4589012
+Container Size/Type: 40' Standard Dry (40DRY/8'6"")
+Seal Number: SL-112847 (Shipper's Seal)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MSC - Mediterranean Shipping Company S.A.
+12-14 Chemin Rieu, 1208 Geneva, Switzerland SCAC: MSCU | CARRIER CODE: MSC
+DESCRIPTION OF GOODS
+Commodity: WOMEN'S COTTON TROUSERS, ASSORTED SIZES (S-XXL)
+HS Code: 6204.62.00
+Number of Packages: 1,200 CARTONS
+Package Type: CORRUGATED EXPORT CARTONS
+Gross Weight: 18,400 KGS
+Net Weight: 17,500 KGS
+VGM (Verified Gross Mass): 22,200 KGS (incl. container tare)
+Measurement (Volume): 67.2 CBM
+Declared Value: USD 425,000.00 (FOB Hai Phong)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT COLLECT
+Incoterms: FOB HAI PHONG (Incoterms 2020)
+Currency: USD
+Ocean Freight: 2,800.00
+Total Charges: USD 4,280.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 2 (Calculation)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-10 Place: Hai Phong, Vietnam
+MSC - Mediterranean Shipping Company S.A. - As Agent for the Carrier
+Page 2","mistral-large2",5455,"2026-07-22 21:10:40.493","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_MSC_MSCU2026002_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143631Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=b089b29c59b135de8ef72624a8619c9b02ef0a8d71b640e735c1e464e3899707","2026-08-18 08:36:31.413","","Document passed all validation checks.","","2026-07-31 20:12:48.091",14305
+7,"bill_of_lading/BL_ONE_ONEY2026005_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_ONE_ONEY2026005_VALID.pdf",4184,"2026-07-22 21:10:49.422","ONEY2026005","ONEU5567234","ONE COMPETENCE","","","","","","","","",14800,"","","","","USD","2026-07-14",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""ONEY2026005"",""container_number"":""ONEU5567234"",""date_of_issue"":""2026-07-14"",""eta"":""2026-08-12"",""gross_weight_kg"":14800,""vessel_name"":""ONE COMPETENCE""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Ocean Network Express Pte. Ltd.
+7 Straits View, Marina One East Tower, Singapore SCAC: ONEY | CARRIER CODE: ONE
+BOOKING / B/L INFORMATION
+B/L Number: ONEY2026005
+Booking Number: BKG-ONE-7745123
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-14
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: BINH DUONG FURNITURE MANUFACTURING LTD
+Address: KCN My Phuoc 3, Ben Cat, Binh Duong, Vietnam
+Tax ID: 3702345678
+Contact: +84 274 356 7800
+CONSIGNEE
+Company: HAMBURG HOME & LIVING GmbH
+Address: Billstr 88, 20539 Hamburg, Germany
+Tax ID: DE-UST-287654321
+Contact: +49 40 765 4300
+NOTIFY PARTY
+Company: DHL GLOBAL FORWARDING
+Address: Charles-de-Gaulle-Str 20, 53113 Bonn, Germany
+Contact: +49 228 182 0000
+VESSEL / VOYAGE DETAILS
+Vessel Name: ONE COMPETENCE
+IMO Number: 9806043
+Voyage Number: OC-201E
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF HAMBURG, GERMANY (DEHAM)
+Place of Delivery: HAMBURG CFS WAREHOUSE, STEINWERDER
+ETD (Estimated Departure): 2026-07-17
+ETA (Estimated Arrival): 2026-08-12
+CONTAINER / CARGO DETAILS
+Container Number: ONEU5567234
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number: SL-334455 (Shipper's Seal)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Ocean Network Express Pte. Ltd.
+7 Straits View, Marina One East Tower, Singapore SCAC: ONEY | CARRIER CODE: ONE
+DESCRIPTION OF GOODS
+Commodity: WOODEN FURNITURE - DINING TABLES AND CHAIRS (ACACIA WOOD)
+HS Code: 9403.60.00
+Number of Packages: 85 PACKAGES
+Package Type: WOODEN CRATES & CARTONS
+Gross Weight: 14,800 KGS
+Net Weight: 13,500 KGS
+VGM (Verified Gross Mass): 19,200 KGS (incl. container tare)
+Measurement (Volume): 62.4 CBM
+Declared Value: USD 78,000.00 (CIF Hamburg)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Incoterms: CIF HAMBURG (Incoterms 2020)
+Currency: USD
+Ocean Freight: 4,200.00
+Total Charges: USD 5,980.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 2 (Calculation)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-14 Place: Ho Chi Minh City, Vietnam
+Ocean Network Express Pte. Ltd. - As Agent for the Carrier
+Page 2","mistral-large2",8569,"2026-07-22 21:10:49.422","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_ONE_ONEY2026005_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143631Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=acf78dbbbcc81325c7dac26dc4c512d05c7289e5c7252d0e4ac6e940cb0797e1","2026-08-18 08:36:31.959","","Document passed all validation checks.","","2026-07-31 20:12:48.689",14306
+9,"bill_of_lading/BL_COSCO_COSU2026003_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_COSCO_COSU2026003_VALID.pdf",4157,"2026-07-22 21:11:02.009","COSU2026003","CCLU7890234","COSCO SHIPPING UNIVERSE","","","","","","","","",22000,"","","","","USD","2026-07-08",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""COSU2026003"",""container_number"":""CCLU7890234"",""date_of_issue"":""2026-07-08"",""eta"":""2026-07-19"",""gross_weight_kg"":22000,""vessel_name"":""COSCO SHIPPING UNIVERSE""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+COSCO SHIPPING Lines Co., Ltd
+378 Dong Da Ming Road, Shanghai 200080, China SCAC: COSU | CARRIER CODE: COSCO
+BOOKING / B/L INFORMATION
+B/L Number: COSU2026003
+Booking Number: BKG-COS-6634521
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-08
+Place of Issue: Da Nang, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: DA NANG SEAFOOD EXPORT CORP
+Address: 78 Tran Phu, Hai Chau District, Da Nang, Vietnam
+Tax ID: 0400123456
+Contact: +84 236 389 2200
+CONSIGNEE
+Company: TOKYO FRESH MARKET CO., LTD
+Address: 2-4-1 Tsukiji, Chuo-ku, Tokyo 104-0045, Japan
+Tax ID: T9011401067890
+Contact: +81 3 5565 4500
+NOTIFY PARTY
+Company: NIPPON COLD CHAIN LOGISTICS
+Address: 1-5-3 Minato-ku, Tokyo, Japan
+Contact: +81 3 6432 1000
+VESSEL / VOYAGE DETAILS
+Vessel Name: COSCO SHIPPING UNIVERSE
+IMO Number: 9795610
+Voyage Number: CU-089E
+Port of Loading: DA NANG PORT, VIETNAM (VNDAD)
+Port of Discharge: YOKOHAMA PORT, JAPAN (JPYOK)
+Place of Delivery: TOKYO DISTRIBUTION CENTER, TSUKIJI
+ETD (Estimated Departure): 2026-07-11
+ETA (Estimated Arrival): 2026-07-19
+CONTAINER / CARGO DETAILS
+Container Number: CCLU7890234
+Container Size/Type: 40' Reefer (40RF/9'6"")
+Seal Number: SL-445692 (Shipper's Seal)
+Temperature Setting: -18.0 C (Continuous)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+COSCO SHIPPING Lines Co., Ltd
+378 Dong Da Ming Road, Shanghai 200080, China SCAC: COSU | CARRIER CODE: COSCO
+DESCRIPTION OF GOODS
+Commodity: FROZEN BLACK TIGER SHRIMP (PENAEUS MONODON), IQF
+HS Code: 0306.17.10
+Number of Packages: 800 CARTONS
+Package Type: CORRUGATED CARTON BOXES (MASTER)
+Gross Weight: 22,000 KGS
+Net Weight: 20,000 KGS
+VGM (Verified Gross Mass): 26,800 KGS (incl. container tare)
+Measurement (Volume): 48.5 CBM
+Declared Value: USD 168,000.00 (CFR Yokohama)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Incoterms: CFR YOKOHAMA (Incoterms 2020)
+Currency: USD
+Ocean Freight: 4,800.00
+Total Charges: USD 6,850.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 1 (Weighing)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-08 Place: Da Nang, Vietnam
+COSCO SHIPPING Lines Co., Ltd - As Agent for the Carrier
+Page 2","mistral-large2",6582,"2026-07-22 21:11:02.009","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_COSCO_COSU2026003_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143632Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=0b095d4c01259e77dc462b1f2f5ddef82db5ccc29134e4c114fbe163060e6226","2026-08-18 08:36:32.501","","Document passed all validation checks.","","2026-07-31 20:12:49.962",14308
+10,"bill_of_lading/BL_HAPAG_LLOYD_HLCU2026004_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BL_HAPAG_LLOYD_HLCU2026004_VALID.pdf",4116,"2026-07-22 21:11:08.734","HLCU2026004","HLXU3456789","BERLIN EXPRESS","","","","","","","","",25200,"","","","","USD","2026-07-12",100,"AI_Processed","","{""anomalies"":[],""bl_number"":""HLCU2026004"",""container_number"":""HLXU3456789"",""date_of_issue"":""2026-07-12"",""eta"":""2026-07-18"",""gross_weight_kg"":25200,""vessel_name"":""BERLIN EXPRESS""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Hapag-Lloyd AG
+Ballindamm 25, 20095 Hamburg, Germany SCAC: HLCU | CARRIER CODE: HAPAG-LLOYD
+BOOKING / B/L INFORMATION
+B/L Number: HLCU2026004
+Booking Number: BKG-HL-2233678
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-12
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: CAN THO RICE MILLING CO., LTD
+Address: 56 Vo Van Kiet, Ninh Kieu, Can Tho, Vietnam
+Tax ID: 1801234567
+Contact: +84 292 381 5500
+CONSIGNEE
+Company: SINGAPORE GRAIN TRADING PTE LTD
+Address: 10 Anson Road #25-07, Singapore 079903
+Tax ID: SG-UEN-201912345K
+Contact: +65 6223 4500
+NOTIFY PARTY
+Company: ASEAN COMMODITIES PTE LTD
+Address: 8 Marina View, Singapore 018960
+Contact: +65 6221 8800
+VESSEL / VOYAGE DETAILS
+Vessel Name: BERLIN EXPRESS
+IMO Number: 9501332
+Voyage Number: BE-056W
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF SINGAPORE (SGSIN)
+Place of Delivery: JURONG PORT WAREHOUSE, SINGAPORE
+ETD (Estimated Departure): 2026-07-14
+ETA (Estimated Arrival): 2026-07-18
+CONTAINER / CARGO DETAILS
+Container Number: HLXU3456789
+Container Size/Type: 20' Standard Dry (20DRY/8'6"")
+Seal Number: SL-778901 (Shipper's Seal)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Hapag-Lloyd AG
+Ballindamm 25, 20095 Hamburg, Germany SCAC: HLCU | CARRIER CODE: HAPAG-LLOYD
+DESCRIPTION OF GOODS
+Commodity: VIETNAMESE JASMINE RICE, 5% BROKEN, CROP 2026
+HS Code: 1006.30.90
+Number of Packages: 500 BAGS (50KG EACH)
+Package Type: PP WOVEN BAGS
+Gross Weight: 25,200 KGS
+Net Weight: 25,000 KGS
+VGM (Verified Gross Mass): 27,500 KGS (incl. container tare)
+Measurement (Volume): 32.0 CBM
+Declared Value: USD 22,500.00 (FOB HCMC)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT COLLECT
+Incoterms: FOB HO CHI MINH CITY (Incoterms 2020)
+Currency: USD
+Ocean Freight: 1,200.00
+Total Charges: USD 2,100.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 1 (Weighing)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-12 Place: Ho Chi Minh City, Vietnam
+Hapag-Lloyd AG - As Agent for the Carrier
+Page 2","mistral-large2",6285,"2026-07-22 21:11:08.734","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BL_HAPAG_LLOYD_HLCU2026004_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143632Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=dc70a178d1fd97066a962a41655e0da2773dc99f1c191a98e6264ab4fd3dff8c","2026-08-18 08:36:33.040","","Document passed all validation checks.","","2026-07-31 20:12:50.615",14309
+401,"bill_of_lading/BATCH_A_VALID.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BATCH_A_VALID.pdf",4160,"2026-07-31 20:14:40.982","MAEU2026001","MSKU7234561","MAERSK SENTOSA","MS-267E","VIETNAM ELECTRONICS CO., LTD","LA TECH DISTRIBUTION INC.","PACIFIC FREIGHT BROKERS LLC","CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)","PORT OF LOS ANGELES, USA (USLAX)","ELECTRONIC COMPONENTS - LAPTOP MOTHERBOARDS (INTEL/AMD CHIPSET)","8471.30.00",12500,11800,450,"CORRUGATED CARTON BOXES",5120,"USD","2026-07-15",100,"Synced_To_SAP","","{""anomalies"":[],""bl_number"":""MAEU2026001"",""carrier_name"":""MAERSK LINE A/S"",""commodity_desc"":""ELECTRONIC COMPONENTS - LAPTOP MOTHERBOARDS (INTEL/AMD CHIPSET)"",""consignee_name"":""LA TECH DISTRIBUTION INC."",""container_number"":""MSKU7234561"",""date_of_issue"":""2026-07-15"",""eta"":""2026-08-05"",""freight_charges"":5120,""freight_currency"":""USD"",""gross_weight_kg"":12500,""hs_code"":""8471.30.00"",""net_weight_kg"":11800,""notify_party"":""PACIFIC FREIGHT BROKERS LLC"",""package_count"":450,""package_type"":""CORRUGATED CARTON BOXES"",""port_of_discharge"":""PORT OF LOS ANGELES, USA (USLAX)"",""port_of_loading"":""CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)"",""shipper_name"":""VIETNAM ELECTRONICS CO., LTD"",""vessel_name"":""MAERSK SENTOSA"",""voyage_number"":""MS-267E""}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+BOOKING / B/L INFORMATION
+B/L Number: MAEU2026001
+Booking Number: BKG-MSK-4478901
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-15
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: VIETNAM ELECTRONICS CO., LTD
+Address: 45 Nguyen Hue Street, District 1, Ho Chi Minh City, Vietnam
+Tax ID: 0312456789
+Contact: +84 28 3825 1234
+CONSIGNEE
+Company: LA TECH DISTRIBUTION INC.
+Address: 1200 Harbor Blvd, Long Beach, CA 90802, USA
+Tax ID: US-EIN-87-1234567
+Contact: +1 562 435 2700
+NOTIFY PARTY
+Company: PACIFIC FREIGHT BROKERS LLC
+Address: 800 S Figueroa St, Los Angeles, CA 90017, USA
+Contact: +1 213 555 0142
+VESSEL / VOYAGE DETAILS
+Vessel Name: MAERSK SENTOSA
+IMO Number: 9876543
+Voyage Number: MS-267E
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF LOS ANGELES, USA (USLAX)
+Place of Delivery: LONG BEACH DISTRIBUTION CENTER, CA, USA
+ETD (Estimated Departure): 2026-07-18
+ETA (Estimated Arrival): 2026-08-05
+CONTAINER / CARGO DETAILS
+Container Number: MSKU7234561
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number: SL-928374 (Shipper's Seal)
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+MAERSK LINE A/S
+Esplanaden 50, 1098 Copenhagen K, Denmark SCAC: MAEU | CARRIER CODE: MAERSK
+DESCRIPTION OF GOODS
+Commodity: ELECTRONIC COMPONENTS - LAPTOP MOTHERBOARDS (INTEL/AMD CHIPSET)
+HS Code: 8471.30.00
+Number of Packages: 450 CARTONS
+Package Type: CORRUGATED CARTON BOXES
+Gross Weight: 12,500 KGS
+Net Weight: 11,800 KGS
+VGM (Verified Gross Mass): 16,900 KGS (incl. container tare)
+Measurement (Volume): 55.8 CBM
+Declared Value: USD 890,000.00 (CIF Los Angeles)
+FREIGHT & CHARGES
+Freight Terms: FREIGHT PREPAID
+Incoterms: CIF LOS ANGELES (Incoterms 2020)
+Currency: USD
+Ocean Freight: 3,450.00
+Total Charges: USD 5,120.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: YES - Method 1 (Weighing)
+Export License: Not Required
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition the total number of containers or packages indicated in this Bill of Lading for carriage to the port of discharge or place of delivery as stated herein.
+Signed for the Carrier: Date: 2026-07-15 Place: Ho Chi Minh City, Vietnam
+MAERSK LINE A/S - As Agent for the Carrier
+Page 2","mistral-large2",17146,"2026-07-31 20:14:40.982","","","","","","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BATCH_A_VALID.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143633Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=cd8b89259c0a15cb46936c329b83a5d1a73919c990388218a95a7b18b962cdd7","2026-08-18 08:36:33.572","","Document passed all validation checks.","MAERSK LINE A/S","2026-07-31 20:16:03.299",14314
+402,"bill_of_lading/BATCH_B_ERROR.pdf","@MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading/BATCH_B_ERROR.pdf",3536,"2026-07-31 20:14:54.029","EGLV2026015","XXXX0000000","MAERSK SENTOSA","","LONG AN GARMENT FACTORY CO., LTD","SYDNEY FASHION IMPORTS PTY LTD","","CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)","PORT OF SYDNEY, AUSTRALIA (AUSYD)","WOMEN'S CLOTHING - ASSORTED DRESSES","6204.44.00",24500,0,1500,"CARTONS",0,"USD","2026-07-18",67,"Pending_Review","","{""anomalies"":[],""bl_number"":""EGLV2026015"",""carrier_name"":""Evergreen Marine Corporation"",""commodity_desc"":""WOMEN'S CLOTHING - ASSORTED DRESSES"",""consignee_name"":""SYDNEY FASHION IMPORTS PTY LTD"",""container_number"":""XXXX0000000"",""date_of_issue"":""2026-07-18"",""eta"":""2024-01-15"",""freight_charges"":0,""freight_currency"":""USD"",""gross_weight_kg"":0,""hs_code"":""6204.44.00"",""net_weight_kg"":0,""notify_party"":null,""package_count"":1500,""package_type"":""CARTONS"",""port_of_discharge"":""PORT OF SYDNEY, AUSTRALIA (AUSYD)"",""port_of_loading"":""CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)"",""shipper_name"":""LONG AN GARMENT FACTORY CO., LTD"",""vessel_name"":null,""voyage_number"":null}","BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Evergreen Marine Corporation
+166 Min Sheng East Road, Taipei, Taiwan SCAC: EGLV | CARRIER CODE: EVERGREEN
+BOOKING / B/L INFORMATION
+B/L Number: EGLV2026015
+Booking Number: BKG-EG-9956789
+Service Type: CY/CY (Container Yard to Container Yard)
+Date of Issue: 2026-07-18
+Place of Issue: Ho Chi Minh City, Vietnam
+Number of Originals: THREE (3)
+SHIPPER / EXPORTER
+Company: LONG AN GARMENT FACTORY CO., LTD
+Address: KCN Duc Hoa, Long An Province, Vietnam
+Tax ID: 1101234567
+Contact: +84 272 385 4000
+CONSIGNEE
+Company: SYDNEY FASHION IMPORTS PTY LTD
+Address: 42 George Street, Sydney NSW 2000, Australia
+VESSEL / VOYAGE DETAILS
+Vessel Name:
+IMO Number:
+Voyage Number:
+Port of Loading: CAT LAI PORT, HO CHI MINH CITY, VIETNAM (VNSGN)
+Port of Discharge: PORT OF SYDNEY, AUSTRALIA (AUSYD)
+ETD (Estimated Departure): 2026-07-21
+ETA (Estimated Arrival): 2024-01-15
+CONTAINER / CARGO DETAILS
+Container Number: XXXX0000000
+Container Size/Type: 40' High Cube (40HC/9'6"")
+Seal Number:
+Page 1
+BILL OF LADING
+ORIGINAL (1 of 3) - NEGOTIABLE
+Evergreen Marine Corporation
+166 Min Sheng East Road, Taipei, Taiwan SCAC: EGLV | CARRIER CODE: EVERGREEN
+DESCRIPTION OF GOODS
+Commodity: WOMEN'S CLOTHING - ASSORTED DRESSES
+HS Code: 6204.44.00
+Number of Packages: 1,500 CARTONS
+Gross Weight: 0 KGS
+Net Weight: 0 KGS
+Measurement (Volume): 0 CBM
+FREIGHT & CHARGES
+Freight Terms: FREIGHT COLLECT
+Total Charges: USD 0.00
+REGULATORY & COMPLIANCE
+Dangerous Goods: NO
+VGM Declared: NO
+SHIPPED ON BOARD - CLEAN BILL OF LADING
+CLEAN ON BOARD: SHIPPED on board the vessel named herein in apparent good order and condition.
+Signed for the Carrier: Date: 2026-07-18 Place: Ho Chi Minh City, Vietnam
+Page 2","mistral-large2",9739,"2026-07-31 20:14:54.029","JUDGE_TEST","2026-08-18 01:38:31.073","Judge access verification","APPROVED","{""gross_weight_kg"":24500,""vessel_name"":""MAERSK SENTOSA""}","https://sfc-sg-ds1-211-customer-stage.s3.ap-southeast-1.amazonaws.com/6fq22000-s/stages/1f111b37-ff6b-4fd3-9e68-f06ee878a1df/bill_of_lading/BATCH_B_ERROR.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260818T143634Z&X-Amz-SignedHeaders=host&X-Amz-Expires=3599&X-Amz-Credential=AKIATVB5FLPWDSCIUFPF%2F20260818%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Signature=07237bc3846fd7e3a470e50b570557dfff478b2e949a589a2a29f18340b9fa58","2026-08-18 08:36:34.165","ContainerNumber; CarrierMismatch","ContainerNumber 'XXXX0000000' is invalid because it starts with 'XXXX'. VesselName is invalid because it is null. GrossWeightKg is invalid because the value 0 is not greater than 0.","Evergreen Marine Corporation","2026-07-31 20:16:04.056",14315

@@ -1,0 +1,22 @@
+"VESSEL_ID","VESSEL_NAME","IMO_NUMBER","FLAG","GROSS_TONNAGE","BUILT_YEAR","VESSEL_TYPE","OPERATOR_NAME","IS_ACTIVE"
+1,"APL SENTOSA","9484454","Singapore",151000,2015,"Container Ship","APL",true
+2,"CMA CGM ANTOINE","9454430","France",175000,2010,"Container Ship","CMA_CGM",true
+3,"COSCO SHIPPING UNIVERSE","9795934","China",210000,2018,"Container Ship","COSCO",true
+4,"EVER GIVEN","9811000","Panama",220940,2018,"Container Ship","EVERGREEN",true
+5,"HAPAG LLOYD EXPRESS","9351974","Germany",95000,2007,"Container Ship","HAPAG_LLOYD",true
+6,"HYUNDAI PREMIUM","9484466","South Korea",100000,2013,"Container Ship","ONE",true
+7,"KMTC HONG KONG","9720123","Hong Kong",45000,2016,"Container Ship","KMTC",true
+8,"MAERSK COPENHAGEN","9784271","Denmark",145000,2019,"Container Ship","MAERSK",true
+9,"MSC GULSUN","9839430","Panama",232618,2019,"Container Ship","MSC",true
+10,"MV DEMO VESSEL","9000001","Vietnam",50000,2020,"Container Ship","VF_LOGISTICS",true
+11,"ONE INNOVATION","9781277","Japan",145000,2018,"Container Ship","ONE",true
+12,"OOCL JAPAN","9795947","Hong Kong",210000,2017,"Container Ship","OOCL",true
+13,"PIL PACIFIC","9308528","Singapore",55000,2006,"Container Ship","PIL",true
+14,"RCL PIONEER","9312456","Thailand",25000,2005,"Container Ship","RCL",true
+15,"SAMUDERA TIMUR","9345678","Indonesia",20000,2009,"Container Ship","SAMUDERA",true
+16,"SEASPAN EXCELLENCE","9634567","Hong Kong",120000,2014,"Container Ship","SEASPAN",true
+17,"SITC NAGOYA","9456789","Japan",18000,2011,"Container Ship","SITC",true
+18,"TS LINES COURAGE","9567890","Taiwan",30000,2012,"Container Ship","TS_LINES",true
+19,"WAN HAI 506","9678901","Taiwan",40000,2013,"Container Ship","WAN_HAI",true
+20,"YANG MING UNITY","9789012","Taiwan",145000,2019,"Container Ship","YANG_MING",true
+21,"ZIM SAMMY OFER","9890123","Israel",160000,2021,"Container Ship","ZIM",true

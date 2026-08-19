@@ -25,8 +25,8 @@ Other entry points for reviewers:
 
 ## Live prototype
 
-- **Primary interface — Streamlit-in-Snowflake dashboard `VF_LOGISTICS_DASHBOARD`:** source in [`streamlit_app/`](./streamlit_app). Runs natively inside Snowflake (account `DPYXIQZ-FN71223`). Covers document processing, AI review/edit/approve, fraud detection, compliance, AI chat, and analytics.
-- **Evaluator login** (no anonymous public URL — SiS requires authentication): `https://app.snowflake.com` → account `DPYXIQZ-FN71223`, user `HACKATHON_JUDGE`. The password is supplied in the hackathon submission form rather than in this public repository. Verified end-to-end under that role on 2026-08-18. Full details in Section 0 of [`vf-logistics-hackathon/README.md`](./vf-logistics-hackathon/README.md).
+- **Primary interface — Streamlit-in-Snowflake dashboard `VF_LOGISTICS_DASHBOARD`:** source in [`streamlit_app/`](./streamlit_app). Runs natively inside Snowflake (account `SIKIWEQ-LP92053`). Covers document processing, AI review/edit/approve, fraud detection, compliance, AI chat, and analytics.
+- **Evaluator login** (no anonymous public URL — SiS requires authentication): `https://app.snowflake.com` → account `SIKIWEQ-LP92053`, user `HACKATHON_JUDGE`. The password is supplied in the hackathon submission form rather than in this public repository. Migrated from `DPYXIQZ-FN71223` on 2026-08-19 (third migration; see [`vf-logistics-hackathon/docs/ACCOUNT_MIGRATION_2026-08-19.md`](./vf-logistics-hackathon/docs/ACCOUNT_MIGRATION_2026-08-19.md)) and re-verified end-to-end under `HACKATHON_JUDGE_ROLE` the same day. Full details in Section 0 of [`vf-logistics-hackathon/README.md`](./vf-logistics-hackathon/README.md).
 - _(Historical)_ The original submission used a Mendix sandbox UI. Per evaluator feedback, Mendix has been **removed** and all functionality consolidated into the Streamlit app. See Section 11 of [`vf-logistics-hackathon/README.md`](./vf-logistics-hackathon/README.md) for details.
 
 ## Run the autonomous workflow
