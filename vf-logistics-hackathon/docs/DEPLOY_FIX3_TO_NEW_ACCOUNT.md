@@ -1,26 +1,27 @@
 # Deploy Fix 3 (chat persistence) + the Streamlit app to a target account
 
-Runbook, không phải prose. Chạy từ trên xuống. Mọi khối `sql` dán vào Snowsight
-worksheet; mọi khối `powershell` chạy trong terminal.
+A runbook, not prose. Work top to bottom. Paste every `sql` block into a Snowsight
+worksheet; run every `powershell` block in a terminal.
 
-**Bối cảnh:** `AYUGBCE-JX50275` chỉ dùng làm tài liệu, không deploy. Script này để chạy
-trên **tài khoản đích** (tài khoản sẽ dùng chấm thi).
+**Context:** this procedure was authored while the solution lived on an earlier account
+and is intended to be run against the **target account** — the one that will be used for
+judging. The current deployment target is `SIKIWEQ-LP92053`.
 
 ---
 
-## 0. Điều bắt buộc biết trước
+## 0. Things you must know before starting
 
-| Sự thật | Hệ quả |
+| Fact | Consequence |
 |---|---|
-| **`PUT` không chạy được trong Snowsight worksheet** | File Streamlit phải lên stage bằng `snow` CLI, bằng IDE, hoặc bằng `Ingestion → Load files into a Stage`. Đừng mất một giờ để phát hiện điều này |
-| `chat_persistence.sql` có `create or replace TABLE CHAT_SESSION` | Chạy lần 2 **sẽ xoá** hội thoại đã lưu. Bước 1 kiểm tra trước khi chạy |
-| `CREATE OR REPLACE PROCEDURE` xoá sạch `GRANT USAGE` | File đã có 7 `GRANT` ở cuối. Đừng chạy nửa file rồi dừng |
-| `HACKATHON_JUDGE_ROLE` phải tồn tại **trước** khi chạy | Nếu chưa có, các `GRANT` cuối file sẽ lỗi |
-| Trang Compliance mới đọc key `status` / `issues` | Nếu `CHECK_COMPLIANCE` trên tài khoản đích là bản cũ (trả `compliant` / `violations`), **mọi kết quả sẽ hiện FAILED**. Xem Bước 5 |
+| **`PUT` does not work inside a Snowsight worksheet** | Streamlit files must reach the stage via the `snow` CLI, via an IDE, or via `Ingestion → Load files into a Stage`. Do not spend an hour rediscovering this |
+| `chat_persistence.sql` contains `create or replace TABLE CHAT_SESSION` | A second run **will destroy** saved conversations. Step 1 checks for this before you run anything |
+| `CREATE OR REPLACE PROCEDURE` wipes every `GRANT USAGE` | The file already carries 7 `GRANT` statements at the end. Do not run half the file and stop |
+| `HACKATHON_JUDGE_ROLE` must exist **before** you run | If it does not, the `GRANT` statements at the end of the file will fail |
+| The new Compliance page reads the `status` / `issues` keys | If `CHECK_COMPLIANCE` on the target account is the old version (returning `compliant` / `violations`), **every result will render as FAILED**. See Step 5 |
 
 ---
 
-## 1. Pre-flight — chạy trước, đọc kết quả trước khi làm gì tiếp
+## 1. Pre-flight — run this first and read the result before doing anything else
 
 ```sql
 USE DATABASE MENDIX_APP;
@@ -37,16 +38,17 @@ SELECT
      WHERE NAME='HACKATHON_JUDGE_ROLE' AND DELETED_ON IS NULL)       AS HAS_JUDGE_ROLE;
 ```
 
-**Cách đọc kết quả:**
+**How to read the result:**
 
-| Kết quả | Nghĩa là | Làm gì |
+| Result | Meaning | Action |
 |---|---|---|
-| `HAS_CHAT_MESSAGE = 0` | Fix 3 chưa deploy | Đi tiếp Bước 2 |
-| `HAS_CHAT_MESSAGE = 1` và có dữ liệu | Fix 3 **đã** deploy | **DỪNG.** Chạy lại sẽ xoá hội thoại. Chỉ chạy nếu chấp nhận mất |
-| `CHAT_PROCS < 6` | Thiếu procedure | Đi tiếp Bước 2 |
-| `HAS_JUDGE_ROLE = 0` | Chưa có role judge | Tạo role trước, nếu không 7 `GRANT` cuối file sẽ lỗi |
+| `HAS_CHAT_MESSAGE = 0` | Fix 3 is not deployed | Continue to Step 2 |
+| `HAS_CHAT_MESSAGE = 1` and it holds data | Fix 3 **is already** deployed | **STOP.** Re-running destroys saved conversations. Only proceed if losing them is acceptable |
+| `CHAT_PROCS < 6` | Procedures are missing | Continue to Step 2 |
+| `HAS_JUDGE_ROLE = 0` | The judge role does not exist | Create the role first, otherwise the 7 `GRANT` statements at the end of the file will fail |
 
-Nếu `HAS_CHAT_SESSION = 1`, kiểm luôn nó là bảng nào — bảng analytics cũ hay bảng Fix 3:
+If `HAS_CHAT_SESSION = 1`, check which table it actually is — the old analytics table or
+the Fix 3 table:
 
 ```sql
 SELECT COLUMN_NAME FROM MENDIX_APP.INFORMATION_SCHEMA.COLUMNS
@@ -54,34 +56,34 @@ WHERE TABLE_SCHEMA='AGENTS' AND TABLE_NAME='CHAT_SESSION'
 ORDER BY ORDINAL_POSITION;
 ```
 
-Có cột `TITLE` → là bảng Fix 3. Có `TOKENS_USED` / `MESSAGE_COUNT` mà không có `TITLE`
-→ là bảng analytics cũ, ghi đè được (đã kiểm trên AYUGBCE: không view/procedure nào
-phụ thuộc vào nó).
+A `TITLE` column means it is the Fix 3 table. `TOKENS_USED` / `MESSAGE_COUNT` without
+`TITLE` means it is the old analytics table and is safe to overwrite — this was verified
+on the source account: no view or procedure depended on it.
 
 ---
 
-## 2. Chạy chat_persistence.sql
+## 2. Run chat_persistence.sql
 
-Mở file và chạy **toàn bộ**, không chạy từng phần:
+Open the file and run it **in full**; do not run it piecemeal:
 
 ```
 vf-logistics-hackathon/sql/workflows/chat_persistence.sql
 ```
 
-Nó tạo: `CHAT_SESSION`, `CHAT_SESSION_SEQ`, `CHAT_MESSAGE`, và 6 procedure
+It creates `CHAT_SESSION`, `CHAT_SESSION_SEQ`, `CHAT_MESSAGE`, and 6 procedures —
 `CHAT_SESSION_NEW` · `CHAT_MESSAGE_SAVE` · `CHAT_SESSION_LIST` · `CHAT_SESSION_LOAD` ·
-`CHAT_SESSION_DELETE` · `CHAT_SESSION_RENAME`, kèm 7 `GRANT`.
+`CHAT_SESSION_DELETE` · `CHAT_SESSION_RENAME` — plus 7 `GRANT` statements.
 
-Nếu worksheet không cho chạy nhiều statement một lượt, dùng CLI:
+If the worksheet refuses to run multiple statements at once, use the CLI:
 
 ```powershell
 $r = 'C:\Users\phuochoa\Mendix\VF_Logistics_Portal-main_2\snowflake-backend'
-snow sql -f "$r\vf-logistics-hackathon\sql\workflows\chat_persistence.sql" -c <ten_connection>
+snow sql -f "$r\vf-logistics-hackathon\sql\workflows\chat_persistence.sql" -c <connection_name>
 ```
 
 ---
 
-## 3. Kiểm tra SQL đã đúng
+## 3. Verify the SQL landed correctly
 
 ```sql
 SELECT PROCEDURE_NAME, ARGUMENT_SIGNATURE
@@ -90,13 +92,13 @@ WHERE PROCEDURE_SCHEMA='AGENTS' AND PROCEDURE_NAME LIKE 'CHAT_SESSION%'
    OR (PROCEDURE_SCHEMA='AGENTS' AND PROCEDURE_NAME='CHAT_MESSAGE_SAVE')
 ORDER BY 1;
 ```
-Phải ra **6 dòng**.
+This must return **6 rows**.
 
 ```sql
--- Vòng đời thật: tạo phiên -> lưu 1 lượt -> đọc lại -> xoá
+-- Real lifecycle: create a session -> save one turn -> read it back -> delete
 CALL MENDIX_APP.AGENTS.CHAT_SESSION_NEW('EN');
 ```
-Ghi lại `SESSION_ID` trả về, thay vào `<SID>` bên dưới:
+Note the `SESSION_ID` it returns and substitute it for `<SID>` below:
 
 ```sql
 CALL MENDIX_APP.AGENTS.CHAT_MESSAGE_SAVE(<SID>, 'user', 'deploy smoke test');
@@ -105,27 +107,27 @@ CALL MENDIX_APP.AGENTS.CHAT_SESSION_LOAD(<SID>);
 CALL MENDIX_APP.AGENTS.CHAT_SESSION_DELETE(<SID>);
 ```
 
-| Bước | Kỳ vọng |
+| Step | Expected |
 |---|---|
-| `CHAT_SESSION_NEW` | Trả về một `SESSION_ID` số |
-| `CHAT_MESSAGE_SAVE` | Thành công, không lỗi |
-| `CHAT_SESSION_LIST` | Phiên vừa tạo xuất hiện trong danh sách |
-| `CHAT_SESSION_LOAD` | Trả về đúng lượt `'deploy smoke test'` |
-| `CHAT_SESSION_DELETE` | Xoá xong; `CHAT_SESSION_LIST` không còn thấy nó |
+| `CHAT_SESSION_NEW` | Returns a numeric `SESSION_ID` |
+| `CHAT_MESSAGE_SAVE` | Succeeds with no error |
+| `CHAT_SESSION_LIST` | The session you just created appears in the list |
+| `CHAT_SESSION_LOAD` | Returns the `'deploy smoke test'` turn verbatim |
+| `CHAT_SESSION_DELETE` | Deletes cleanly; `CHAT_SESSION_LIST` no longer shows it |
 
-**Đừng bỏ bước này.** Tạo được bảng không chứng minh procedure chạy được — 6 procedure
-đều là `EXECUTE AS OWNER` và có kiểm quyền theo `CURRENT_USER()` bên trong.
+**Do not skip this step.** Creating the tables does not prove the procedures run — all 6
+are `EXECUTE AS OWNER` and perform an internal permission check against `CURRENT_USER()`.
 
 ---
 
-## 4. Đưa file Streamlit lên stage
+## 4. Get the Streamlit files onto the stage
 
-`PUT` **không** chạy trong worksheet. Ba cách, chọn một:
+`PUT` does **not** work in a worksheet. Three options; pick one:
 
-**Cách A — snow CLI (nhanh nhất):**
+**Option A — snow CLI (fastest):**
 ```powershell
 $r = 'C:\Users\phuochoa\Mendix\VF_Logistics_Portal-main_2\snowflake-backend\streamlit_app'
-$c = '<ten_connection>'
+$c = '<connection_name>'
 snow stage copy "$r\app.py"          "@MENDIX_APP.AGENTS.STREAMLIT_STAGE"       --overwrite -c $c
 snow stage copy "$r\ui.py"           "@MENDIX_APP.AGENTS.STREAMLIT_STAGE"       --overwrite -c $c
 snow stage copy "$r\i18n.py"         "@MENDIX_APP.AGENTS.STREAMLIT_STAGE"       --overwrite -c $c
@@ -133,27 +135,27 @@ snow stage copy "$r\environment.yml" "@MENDIX_APP.AGENTS.STREAMLIT_STAGE"       
 snow stage copy "$r\pages"           "@MENDIX_APP.AGENTS.STREAMLIT_STAGE/pages" --overwrite -c $c
 ```
 
-**Cách B — Snowsight:** `Ingestion → Load files into a Stage → STREAMLIT_STAGE`.
-Nhớ 6 file trang phải vào đúng path `pages/`.
+**Option B — Snowsight:** `Ingestion → Load files into a Stage → STREAMLIT_STAGE`.
+Remember that the 6 page files must land under the `pages/` path.
 
-**Cách C — nhờ IDE** chạy `PUT` (IDE có client, worksheet không có).
+**Option C — ask the IDE** to run `PUT` (the IDE has a client; the worksheet does not).
 
-### Bảng đối chiếu — 10 file, kích thước và MD5 phải khớp tuyệt đối
+### Reconciliation table — 10 files; size and MD5 must match exactly
 
 | File | Bytes | MD5 |
 |---|---|---|
-| `app.py` | 9.471 | `344d5cfb90ef44d319b0016c0536efbd` |
-| `ui.py` | 12.315 | `7892821ae4bd42a95a57fb9bab36c09b` |
-| `i18n.py` | 84.731 | `2124032bda6e081e71094b90ab3dc75e` |
+| `app.py` | 9,471 | `344d5cfb90ef44d319b0016c0536efbd` |
+| `ui.py` | 12,315 | `7892821ae4bd42a95a57fb9bab36c09b` |
+| `i18n.py` | 84,731 | `2124032bda6e081e71094b90ab3dc75e` |
 | `environment.yml` | 67 | `30937defe8f9052f2eff787fc0e7ffa5` |
-| `pages/1_Documents.py` | 21.188 | `fa2d74361a0b6fcb04f1904d217d9e14` |
-| `pages/2_Compliance.py` | 7.747 | `bee0ca7783046f9ceed6bec1f4a85731` |
-| `pages/3_Fraud_Detection.py` | 9.302 | `59466af0d830e459880fa3ba6661bd04` |
-| `pages/4_AI_FinOps.py` | 10.714 | `23fa6e9ea1d150b9cf109dfdcd882b4a` |
-| `pages/5_Settings.py` | 1.590 | `569f74a218c16591ae7e7569b9a62f6c` |
-| `pages/6_AI_Chat.py` | 23.056 | `37c00474e57934ade558fddd4d7dc1a3` |
+| `pages/1_Documents.py` | 21,188 | `fa2d74361a0b6fcb04f1904d217d9e14` |
+| `pages/2_Compliance.py` | 7,747 | `bee0ca7783046f9ceed6bec1f4a85731` |
+| `pages/3_Fraud_Detection.py` | 9,302 | `59466af0d830e459880fa3ba6661bd04` |
+| `pages/4_AI_FinOps.py` | 10,714 | `23fa6e9ea1d150b9cf109dfdcd882b4a` |
+| `pages/5_Settings.py` | 1,590 | `569f74a218c16591ae7e7569b9a62f6c` |
+| `pages/6_AI_Chat.py` | 23,056 | `37c00474e57934ade558fddd4d7dc1a3` |
 
-Kiểm tra sau khi upload:
+Verify after uploading:
 
 ```sql
 ALTER STAGE MENDIX_APP.AGENTS.STREAMLIT_STAGE REFRESH;
@@ -162,12 +164,12 @@ FROM DIRECTORY(@MENDIX_APP.AGENTS.STREAMLIT_STAGE)
 ORDER BY RELATIVE_PATH;
 ```
 
-`ALTER STAGE ... REFRESH` là bắt buộc — không có nó `DIRECTORY()` trả kết quả cũ.
+`ALTER STAGE ... REFRESH` is mandatory — without it `DIRECTORY()` returns stale results.
 
-**`ui.py` là file dễ quên nhất.** Cả 6 trang mới đều `import ui`; thiếu nó là toàn bộ
-app trắng trang với `ModuleNotFoundError`.
+**`ui.py` is the file people forget.** All 6 new pages `import ui`; without it the whole
+app renders blank with `ModuleNotFoundError`.
 
-Rồi ép app nạp lại file mới:
+Then force the app to reload the new files:
 
 ```sql
 ALTER STREAMLIT MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD SET MAIN_FILE = 'app.py';
@@ -175,29 +177,29 @@ ALTER STREAMLIT MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD SET MAIN_FILE = 'app.py
 
 ---
 
-## 5. Cạm bẫy: trang Compliance sẽ hiện FAILED hết nếu bỏ bước này
+## 5. The trap: skip this step and the Compliance page renders FAILED for everything
 
-Trang `2_Compliance.py` mới đọc key `status` và `issues`. Bản cũ của
-`CHECK_COMPLIANCE` trả `compliant` và `violations`, nên **mọi kết quả sẽ hiện FAILED**
-bất kể đúng sai. Kiểm:
+The new `2_Compliance.py` reads the `status` and `issues` keys. The old version of
+`CHECK_COMPLIANCE` returns `compliant` and `violations`, so **every result will render as
+FAILED** regardless of whether it passed. Check:
 
 ```sql
 CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(
   (SELECT MIN(BL_ID) FROM MENDIX_APP.AGENTS.BILL_OF_LADING));
 ```
 
-| Kết quả trả về | Nghĩa | Làm gì |
+| Returned payload | Meaning | Action |
 |---|---|---|
-| Có key `status` và `issues` | Bản đã sửa | Xong, không cần làm gì |
-| Có key `compliant` / `violations` | **Bản cũ** | Deploy lại 2 procedure từ backup, xem dưới |
+| Contains `status` and `issues` | Fixed version | Done, nothing to do |
+| Contains `compliant` / `violations` | **Old version** | Redeploy the 2 procedures from the backup, below |
 
-Bản đã sửa của `CHECK_COMPLIANCE` và `BATCH_CHECK_COMPLIANCE` nằm trong:
+The fixed versions of `CHECK_COMPLIANCE` and `BATCH_CHECK_COMPLIANCE` live in:
 
 ```
 backup_2026-08-19/ddl/chunks/60_procedures_1.sql .. 60_procedures_4.sql
 ```
 
-Tìm đúng 2 statement đó và chạy, rồi backfill:
+Locate those two statements, run them, then backfill:
 
 ```sql
 CALL MENDIX_APP.AGENTS.BATCH_CHECK_COMPLIANCE(0, 20000);
@@ -208,9 +210,9 @@ SELECT COUNT(*) AS TOTAL,
        SUM(IFF(COMPLIANCE_CHECK_PASSED IS NULL, 1, 0)) AS NEVER_CHECKED
 FROM MENDIX_APP.AGENTS.BILL_OF_LADING;
 ```
-Kỳ vọng: `NEVER_CHECKED = 0`, tỉ lệ fail khoảng **13,5 %**.
+Expected: `NEVER_CHECKED = 0` and a failure rate of roughly **13.5%**.
 
-Sau khi `CREATE OR REPLACE PROCEDURE`, **re-grant**:
+After any `CREATE OR REPLACE PROCEDURE`, **re-grant**:
 
 ```sql
 GRANT USAGE ON PROCEDURE MENDIX_APP.AGENTS.CHECK_COMPLIANCE(NUMBER)
@@ -221,22 +223,22 @@ GRANT USAGE ON PROCEDURE MENDIX_APP.AGENTS.BATCH_CHECK_COMPLIANCE(NUMBER, NUMBER
 
 ---
 
-## 6. Kiểm tra cuối bằng chính app
+## 6. Final verification through the app itself
 
-| # | Việc | Kỳ vọng |
+| # | Task | Expected |
 |---|---|---|
-| 1 | Mở app, bấm qua cả 7 trang | Không trang nào lỗi. Nếu trắng trang → thiếu `ui.py` |
-| 2 | Trang AI Chat, hỏi `Top 5 carriers by revenue` | Có bảng kết quả + expander **View generated SQL** |
-| 3 | **Nhấn F5 reload cả trang**, mở lại conversation ở sidebar | **Transcript còn nguyên, kèm bảng kết quả.** Đây là bằng chứng duy nhất chứng minh Fix 3 hoạt động |
-| 4 | Đổi ngôn ngữ EN → 日本語 → Tiếng Việt | Đổi thật, không rơi về tiếng Việt khi chọn Nhật |
-| 5 | Trang Compliance, chạy 1 B/L | Ra `PASS`/`FAIL` thật, không phải FAILED hết |
+| 1 | Open the app and click through all 7 pages | No page errors. A blank page means `ui.py` is missing |
+| 2 | On the AI Chat page, ask `Top 5 carriers by revenue` | A result table plus a **View generated SQL** expander |
+| 3 | **Press F5 to reload the whole page**, then reopen the conversation from the sidebar | **The transcript is intact, result tables included.** This is the only evidence that proves Fix 3 works |
+| 4 | Switch language EN → 日本語 → Vietnamese | The UI actually changes; selecting Japanese does not fall back to Vietnamese |
+| 5 | On the Compliance page, run a single B/L | A genuine `PASS`/`FAIL`, not FAILED for everything |
 
-Bước 3 là bước quan trọng nhất. Không reload thì không phân biệt được chat lưu trong
-Snowflake với chat lưu trong `st.session_state`.
+Step 3 matters most. Without a reload there is no way to distinguish chat persisted in
+Snowflake from chat held in `st.session_state`.
 
 ---
 
-## 7. Trước khi chạy: gate trên máy local
+## 7. Before you run: the local gate
 
 ```powershell
 $r = 'C:\Users\phuochoa\Mendix\VF_Logistics_Portal-main_2\snowflake-backend\vf-logistics-hackathon'
@@ -245,18 +247,18 @@ python "$r\tools\check_ui.py"
 python "$r\tools\smoke_load_pages.py"
 ```
 
-Kỳ vọng: `checked 9 files, 348 translation keys x 3 languages` / `OK - safe to PUT` và
-`all 7 pages loaded without raising`. Đừng upload nếu một trong hai fail.
+Expected: `checked 9 files, 348 translation keys x 3 languages` / `OK - safe to PUT` and
+`all 7 pages loaded without raising`. Do not upload if either one fails.
 
 ---
 
 ## 8. Rollback
 
-| Thứ cần lùi | Cách |
+| What to revert | How |
 |---|---|
-| SQL chat | `DROP TABLE CHAT_MESSAGE; DROP TABLE CHAT_SESSION; DROP SEQUENCE CHAT_SESSION_SEQ;` rồi drop 6 procedure. Không object nào khác phụ thuộc |
-| File Streamlit | Upload lại bản cũ, hoặc `ALTER STREAMLIT ... SET MAIN_FILE = 'app.py'` sau khi phục hồi file |
-| Compliance | `UPDATE BILL_OF_LADING SET COMPLIANCE_CHECK_PASSED = NULL;` để về trạng thái chưa kiểm |
+| Chat SQL | `DROP TABLE CHAT_MESSAGE; DROP TABLE CHAT_SESSION; DROP SEQUENCE CHAT_SESSION_SEQ;` then drop the 6 procedures. Nothing else depends on them |
+| Streamlit files | Re-upload the previous versions, or run `ALTER STREAMLIT ... SET MAIN_FILE = 'app.py'` after restoring the files |
+| Compliance | `UPDATE BILL_OF_LADING SET COMPLIANCE_CHECK_PASSED = NULL;` to return to the unchecked state |
 
-Không cần rollback nếu Bước 1 báo `HAS_CHAT_MESSAGE = 0`: mọi thứ ở đây là thêm mới,
-trừ `CHAT_SESSION` nếu bảng analytics cũ tồn tại.
+No rollback is needed if Step 1 reported `HAS_CHAT_MESSAGE = 0`: everything here is
+additive, except `CHAT_SESSION` when the old analytics table exists.
