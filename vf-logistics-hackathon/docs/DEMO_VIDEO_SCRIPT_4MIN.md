@@ -81,11 +81,10 @@ Ghi chú: **không** giới thiệu tên, không "hôm nay tôi sẽ trình bày
 
 2. Bấm **Process New PDFs on Stage**.
    > "Under the hood this is Cortex PARSE_DOCUMENT in OCR mode, then Cortex COMPLETE
-   > on mistral-large2 pulling structured fields out of the OCR text."
+   > on llama3.1-70b pulling structured fields out of the OCR text."
 
-3. **CẮT Ở ĐÂY.** Xử lý mất khoảng **20 giây mỗi tài liệu**. Đừng để 40 giây im lặng
-   trong video 4 phút. Cắt cảnh, nối sang lúc đã có kết quả, và nói thật:
-   > "That takes about twenty seconds per document."
+3. **CẮT Ở ĐÂY.** Xử lý mất khoảng **3–5 giây mỗi tài liệu**. Nếu cả 2 file xong trong ~10 s thì không cần cắt — nếu muốn cắt cũng được:
+   > "That takes a few seconds per document."
 
 4. Kết quả `{"processed": 2, "errors": 0}`. Cuộn xuống bảng, chỉ vào 2 dòng mới —
    cột **AI Confidence score** và **Alert**.
@@ -213,7 +212,7 @@ không phải sai sót.
 | Đừng nói | Vì sao |
 |---|---|
 | "Cortex Agent" | `SHOW AGENTS` không trả về object nào. Giám khảo kiểm tra được |
-| "Real-time" | Pipeline chạy theo task 5 phút và Cortex mất ~20 s/tài liệu. Dùng "seconds, not hours" |
+| "Real-time" | Pipeline chạy theo task 5 phút và Cortex mất ~3–5 s/tài liệu. Dùng "seconds, not hours" |
 | "100% accuracy" | Bộ test là 10 tài liệu tự sinh. Nói "ten out of ten on our test set" |
 | "Fully autonomous" | Có backpressure và ngưỡng human-review. Nói "autonomous within limits it enforces itself" |
 | Con số không đọc từ màn hình | Nếu máy hiện số khác, cả video mất tin cậy |

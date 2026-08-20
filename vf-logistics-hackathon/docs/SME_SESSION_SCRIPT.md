@@ -64,7 +64,7 @@ Chia màn hình: README mục Fix 1 / 2 / 3.
 1. Mở trang **Documents**. Chỉ vào metric: `PDFs on Stage 17 / Extracted Documents 15`.
    > "Two files landed on the stage a moment ago and haven't been processed. Watch the gap close."
 2. Bấm **Process New PDFs on Stage**. Mất **~20 giây/file** (1,3s OCR + 15,4s cho `COMPLETE`) → khoảng 40 giây cho 2 file. **Nói trong lúc chờ**, đừng để im lặng:
-   > "Under the hood this is Cortex `PARSE_DOCUMENT` in OCR mode, then `COMPLETE` on mistral-large2 to pull structured fields out of the OCR text. Both calls now write to a ledger — I'll come back to why that matters."
+   > "Under the hood this is Cortex `PARSE_DOCUMENT` in OCR mode, then `COMPLETE` on llama3.1-70b to pull structured fields out of the OCR text. Both calls now write to a ledger — I'll come back to why that matters."
 3. Kết quả `{"processed":2,"errors":0,"synced":true}`. Cuộn xuống bảng — 2 dòng mới, kèm **Alert** và **AI Confidence score**.
    > "These two documents were chosen because they fail on purpose. One has a carrier code that contradicts the vessel name; the other fails multiple rules at once. The confidence score isn't a model self-assessment — it's `(6 − failed rules) / 6`, computed by a deterministic SQL function. The model narrates; it never decides."
 
@@ -198,11 +198,12 @@ Bỏ hết, giữ đúng 4 mảnh:
 | Object | 34 table · 11 view · 52 procedure · 10 function · **7 task · 7 stream (1:1)** · 3 dynamic table |
 | Quyền judge | 102 → **104 grant**, verified dưới `USE SECONDARY ROLES NONE` |
 | Chi phí compliance: row-by-row vs set-based | 3,6 credit vs **0,000087 credit** — rẻ hơn ~41.000 lần |
-| Latency 1 document | ~20 giây (OCR 1,3s + `COMPLETE` 15,4s) |
+| Latency 1 document | ~3–5 giây (OCR 1,3s + `COMPLETE` ~2–4s on llama3.1-70b) |
 | Token 1 lần extract | 1.082 in + 413 out = **1.495** |
 | Alert trùng id đã sửa | 20 `ALERT_ID` · 69 `CALL_ID` · 66 `LOG_ID` |
 | Fraud queue: lifetime vs 7 ngày | 106 vs **47** (limit 100) |
-| Model | `mistral-large2` |
+| Model (extraction) | `llama3.1-70b` |
+| Model (reasoning/chat) | `mistral-large2` |
 | 6 rule validation | BlNumber · ContainerNumber · VesselName · GrossWeightKg · DateOfIssue · CarrierMismatch |
 
 ---

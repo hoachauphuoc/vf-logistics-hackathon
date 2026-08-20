@@ -41,7 +41,7 @@ The system has been **FULLY** deployed on Snowflake:
 │  PHASE 1: Smart B/L Extractor (AI PDF → Structured Data)       │
 │  ┌──────────────────────────────────────────────────────┐      │
 │  │ BL_EXTRACTS Table                                    │      │
-│  │ • Cortex AI extraction (mistral-large2)              │      │
+│  │ • Cortex AI extraction (llama3.1-70b)                │      │
 │  │ • Confidence score >= 95% = Auto-approve             │      │
 │  │ • Human-in-the-loop for < 95%                        │      │
 │  └──────────────┬───────────────────────────────────────┘      │
@@ -137,7 +137,7 @@ ORDER BY PHASE1_CREATED_AT DESC;
 // Mendix JDBC connector calls Cortex AI
 const extractData = await snowflakeQuery(`
     SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        'mistral-large2',
+        'llama3.1-70b',
         '{ "messages": [ 
             { "role": "user", 
               "content": "Extract B/L info from: ${pdfText}" 
