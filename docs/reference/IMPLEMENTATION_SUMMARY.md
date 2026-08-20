@@ -123,6 +123,6 @@ snowflake-backend/MENDIX_MICROFLOW_UPDATE_GUIDE.md
 - Private key file: `<mendix project>/resources/snowflake_key.p8` (relative path, no hardcoded absolute
   path — see `DYNAMIC_JDBC_URL_GUIDE.md`).
 - Stage: `@MENDIX_APP.AGENTS.LOGISTICS_STAGE` (user `HOACHAU` has WRITE privilege).
-- Current account: `AYUGBCE-JX50275` (changed from the older account `cu84637.ap-southeast-7.aws`).
+- Current account: `SIKIWEQ-LP92053` (migrated from `DPYXIQZ-FN71223` on 2026-08-19; original was `AYUGBCE-JX50275`, before that `cu84637.ap-southeast-7.aws`). Mendix integration removed from architecture.
 
 **Ready for hackathon demo!** 🚀

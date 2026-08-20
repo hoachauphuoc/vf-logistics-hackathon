@@ -7,7 +7,7 @@ from snowflake.snowpark.context import get_active_session
 from i18n import init_language
 import ui
 
-st.set_page_config(page_title="AI Chat", page_icon="ðŸ’¬", layout="wide")
+st.set_page_config(page_title="AI Chat", page_icon="💬", layout="wide")
 session = get_active_session()
 
 # init_language() renders the sidebar language selector, the same control every
@@ -275,7 +275,7 @@ SCHEMA_HINT = (
     "\n"
     "IMPORTANT - use these exact literal values, do not invent your own:\n"
     "- BILL_OF_LADING.STATUS: 'In_Transit', 'Delivered', 'APPROVED', 'Pending_Review', "
-    "'VALIDATED', 'SAP_POSTED', 'DRAFT', 'BLOCKED'. There is no value 'PENDING' â€” "
+    "'VALIDATED', 'SAP_POSTED', 'DRAFT', 'BLOCKED'. There is no value 'PENDING'  --  "
     "a question about pending or awaiting-review shipments means STATUS = 'Pending_Review'.\n"
     "- BILL_OF_LADING.PAYMENT_STATUS: 'PAID', 'UNPAID'\n"
     "- BILL_OF_LADING.CARRIER_NAME: 'MAERSK', 'MSC', 'COSCO', 'HAPAG_LLOYD', 'CMA_CGM', "
@@ -427,7 +427,7 @@ with st.sidebar:
             for s in past:
                 sid = int(s["SESSION_ID"])
                 title = str(s.get("TITLE") or t["untitled"])[:36]
-                mark = " â—" if sid == st.session_state.get("session_id") else ""
+                mark = "  *" if sid == st.session_state.get("session_id") else ""
                 if st.button(f"{title}{mark}", key=f"sess_{sid}", use_container_width=True):
                     loaded = db_load_session(sid)
                     if loaded is not None:

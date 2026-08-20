@@ -1,5 +1,8 @@
 # Snowflake Private Key Setup Guide
 
+> **DEPRECATED (2026-08-19):** Mendix integration was removed from the architecture.
+> Account references below (`AYUGBCE-JX50275`) are historical. Current account: `SIKIWEQ-LP92053`.
+
 ## 📍 Private Key Location
 
 **File is located at:** `resources/snowflake_key.p8`

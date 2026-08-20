@@ -217,7 +217,7 @@ def main() -> int:
     from snowflake.snowpark import Session
 
     session = Session.builder.configs({
-        "connection_name": "dpyxiqz-fn71223",
+        "connection_name": "sikiweq-lp92053",
         "client_store_temporary_credential": False,
     }).create()
 

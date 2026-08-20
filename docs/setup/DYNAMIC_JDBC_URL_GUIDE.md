@@ -1,4 +1,7 @@
-# 🔧 Dynamic JDBC URL with Relative Path
+# Dynamic JDBC URL with Relative Path
+
+> **DEPRECATED (2026-08-19):** Mendix integration was removed from the architecture.
+> Account references below (`AYUGBCE-JX50275`) are historical. Current account: `SIKIWEQ-LP92053`.
 
 ## 🎯 Problem
 We don't want to hardcode an absolute path in the JDBC URL:

@@ -20,7 +20,7 @@
 - **Real-time Analytics** — Carrier revenue, shipment status, weekly trends, FX rates, sanctions screening, AI usage/cost monitoring
 
 Important notes for judges:
-- The **entry point** is the Streamlit dashboard running inside Snowflake (account `DPYXIQZ-FN71223`)
+- The **entry point** is the Streamlit dashboard running inside Snowflake (account `SIKIWEQ-LP92053`)
 - The **autonomous workflow execution** (Fraud Detection → AI Investigation → Sanctions Screening → Remediation) can be triggered from the Fraud Detection page or the AI Chat sidebar
 - Every detection, AI decision, audit log entry, and ERP post is made inside Snowflake — no external runtime
 
@@ -129,8 +129,8 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
 Upload as many Bills of Lading as you like in a single command, then take them all the way to an autonomous decision with one more:
 
 ```bash
-snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection dpyxiqz-fn71223
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection dpyxiqz-fn71223
+snow sql -q "PUT file://bl_pdfs/*.pdf @MENDIX_APP.AGENTS.LOGISTICS_STAGE/bill_of_lading AUTO_COMPRESS=FALSE OVERWRITE=TRUE;" --connection sikiweq-lp92053
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_INGEST_AND_DECIDE();" --connection sikiweq-lp92053
 ```
 
 If you are reproducing this on the author's workstation, note that the local `snow` CLI OAuth path is unreliable there; the same commands were therefore executed through **Cortex Code's SQL runner** during validation and in the final demo script.
@@ -148,7 +148,7 @@ SHOW TASKS IN SCHEMA MENDIX_APP.AGENTS;   -- all 7 report state = started
 
 ### Option B — Fraud pipeline only (fastest live demo, no upload needed)
 ```bash
-snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection dpyxiqz-fn71223
+snow sql -q "CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO');" --connection sikiweq-lp92053
 ```
 
 One alert per call keeps the demo fast. To work down a backlog instead, pass a batch size — the orchestrator loops through that many open HIGH-severity alerts in a single invocation, logging every step of every alert:
@@ -158,7 +158,7 @@ CALL MENDIX_APP.AGENTS.WORKFLOW_FULL_PIPELINE_V2('AUTO', 10);   -- process up to
 
 ### Option C — Full demo script (seed data + run + show audit trail)
 ```bash
-snow sql -f sql/workflows/run_full_workflow_demo.sql --connection dpyxiqz-fn71223
+snow sql -f sql/workflows/run_full_workflow_demo.sql --connection sikiweq-lp92053
 ```
 
 The home-dashboard "Run Pipeline" demo shortcut was deliberately removed from the Streamlit UI because it called a scripted `DEMO_PIPELINE()` helper rather than the real orchestrator, and that helper procedure has since been **dropped from the database entirely** — there is no scripted demo path left in this account. The only pipeline button in the UI runs the real backend flow.
@@ -482,7 +482,7 @@ These are platform constraints of the SiS runtime, not defects in the solution. 
 Upload ergonomics are the one area where the native app is a step back from the removed Mendix portal. The trade-off was accepted deliberately: the whole system now runs inside Snowflake with no external runtime, server, Java action, or API credential to maintain. When the SiS runtime advances to 1.26+, in-app upload becomes a `st.file_uploader` call plus a `PUT` to the existing stage — no architectural change.
 
 ### Verification (2026-08-18 audit)
-Full solution audit run against `DPYXIQZ-FN71223`:
+Full solution audit run against `SIKIWEQ-LP92053` (migrated from `DPYXIQZ-FN71223` on 2026-08-19):
 
 | Check | Result |
 |---|---|

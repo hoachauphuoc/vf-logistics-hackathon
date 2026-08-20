@@ -1,4 +1,7 @@
-# 🔧 Fix UploadFileToSnowflake Java Action Configuration
+# Fix UploadFileToSnowflake Java Action Configuration
+
+> **DEPRECATED (2026-08-19):** Mendix integration was removed from the architecture.
+> Account references below (`AYUGBCE-JX50275`) are historical. Current account: `SIKIWEQ-LP92053`.
 
 > ⚠️ **OUTDATED (debug history from 2026-07-24)**: This file documents how to configure the Parameters/Return type
 > via the Studio Pro UI (that part of the process is still accurate), BUT **the "Backup Code" section below contains
