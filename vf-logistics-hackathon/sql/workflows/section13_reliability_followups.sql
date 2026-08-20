@@ -146,12 +146,12 @@ BEGIN
         || :log_cols
         || REPLACE('SELECT ~~parse_document-ocr~~, ~~BL_EXTRACTION_OCR~~, ~~PROCESS_BL_DOCUMENTS~~, ~~SUCCESS~~, ~~SUCCESS~~, :t_parse_ms, LEFT(:rel_path, 500), LEFT(:parsed_text, 1000), NULL, NULL, NULL;', '~', :q);
 
-    a_cmpl := REPLACE('extracted_json := (SELECT SNOWFLAKE.CORTEX.COMPLETE(~~mistral-large2~~, :prompt));', '~', :q);
+    a_cmpl := REPLACE('extracted_json := (SELECT SNOWFLAKE.CORTEX.COMPLETE(~~llama3.1-70b~~, :prompt));', '~', :q);
     r_cmpl := REPLACE('LET t_cmpl0 TIMESTAMP_NTZ := CURRENT_TIMESTAMP(); ', '~', :q)
         || :a_cmpl
-        || REPLACE(' LET t_cmpl_ms NUMBER := TIMESTAMPDIFF(~~MILLISECOND~~, :t_cmpl0, CURRENT_TIMESTAMP()); LET tok_in NUMBER := (SELECT SNOWFLAKE.CORTEX.COUNT_TOKENS(~~mistral-large2~~, :prompt)); LET tok_out NUMBER := (SELECT SNOWFLAKE.CORTEX.COUNT_TOKENS(~~mistral-large2~~, :extracted_json)); INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG', '~', :q)
+        || REPLACE(' LET t_cmpl_ms NUMBER := TIMESTAMPDIFF(~~MILLISECOND~~, :t_cmpl0, CURRENT_TIMESTAMP()); LET tok_in NUMBER := (SELECT SNOWFLAKE.CORTEX.COUNT_TOKENS(~~llama3.1-70b~~, :prompt)); LET tok_out NUMBER := (SELECT SNOWFLAKE.CORTEX.COUNT_TOKENS(~~llama3.1-70b~~, :extracted_json)); INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG', '~', :q)
         || :log_cols
-        || REPLACE('SELECT ~~mistral-large2~~, ~~BL_EXTRACTION_JSON~~, ~~PROCESS_BL_DOCUMENTS~~, ~~SUCCESS~~, ~~SUCCESS~~, :t_cmpl_ms, LEFT(:prompt, 500), LEFT(:extracted_json, 1000), :tok_in, :tok_out, :tok_in + :tok_out;', '~', :q);
+        || REPLACE('SELECT ~~llama3.1-70b~~, ~~BL_EXTRACTION_JSON~~, ~~PROCESS_BL_DOCUMENTS~~, ~~SUCCESS~~, ~~SUCCESS~~, :t_cmpl_ms, LEFT(:prompt, 500), LEFT(:extracted_json, 1000), :tok_in, :tok_out, :tok_in + :tok_out;', '~', :q);
 
     n_parse := (LENGTH(:ddl) - LENGTH(REPLACE(:ddl, :a_parse, ''))) / LENGTH(:a_parse);
     n_cmpl  := (LENGTH(:ddl) - LENGTH(REPLACE(:ddl, :a_cmpl,  ''))) / LENGTH(:a_cmpl);

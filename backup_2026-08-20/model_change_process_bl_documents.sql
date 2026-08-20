@@ -1,0 +1,106 @@
+-- Model change 2026-08-20: PROCESS_BL_DOCUMENTS extraction model
+-- mistral-large2 -> llama3.1-70b
+--
+-- WHY
+-- The SME demo on 2026-08-20 stalled because the CORTEX.COMPLETE call inside
+-- PROCESS_BL_DOCUMENTS took 217 seconds for a single document. Benchmarking
+-- showed that was not the typical case -- mistral-large2 runs this prompt in
+-- ~21s -- but that the model has a very heavy latency tail. Measured across the
+-- whole application from AI_CALL_LOG:
+--
+--   WORKFLOW_INVESTIGATE_ANOMALY   median 3.7s   max 142.3s   (38x)
+--   AI_CHAT                        median 1.4s   max  14.7s   (10x)
+--   PROCESS_BL_DOCUMENTS           median ~21s   max 217.0s   (10x)
+--
+-- The problem is variance, not mean latency. A 4-minute demo video cannot
+-- absorb a 10x tail on the one call that sits on its critical path.
+--
+-- WHAT WAS MEASURED BEFORE CHANGING ANYTHING
+-- Candidate models were run against the same prompt and the same stored OCR
+-- text, and their extracted fields were scored against known-good values:
+--
+--   model            latency   quality (12 docs)   notes
+--   mistral-large2    21.1s     12/12              baseline
+--   llama3.1-70b       8.4s     12/12              2.5x faster
+--   llama3.1-8b        4.9s     12/12              4.3x faster, less headroom
+--   mistral-7b        ~3.0s     11/12              WRONG WEIGHT (16900 vs 12500)
+--   mistral-large        --       --               deprecated 2026-07-08
+--
+-- mistral-7b was rejected outright: gross weight plausibility is one of the six
+-- deterministic validation rules, so a misread weight produces a wrong
+-- confidence score rather than a slow one.
+--
+-- The decisive test was not the clean documents but the deliberately broken
+-- ones. A model that "helpfully" repairs a malformed container number or fills
+-- in a missing vessel name would cause the validation rules to pass on a
+-- document that should fail -- a false pass in a compliance system. All three
+-- surviving candidates extracted the bad values verbatim
+-- (container XXXX0000000, vessel empty, weight 0) with no repair.
+--
+-- End to end, llama3.1-70b reproduced the stored confidence score on 12 of 12
+-- documents. The one apparent mismatch (BATCH_B_ERROR.pdf, 67 vs 50) was a
+-- flaw in the test, not the model: that row has FINAL_STATUS='APPROVED' and a
+-- populated CORRECTED_JSON, so its stored fields are human-corrected values,
+-- not raw AI output. Its RAW_TEXT is byte-identical to
+-- BL_EVERGREEN_EGLV2026015_ERROR.pdf, which scores 50. The model was right.
+--
+-- SCOPE -- deliberately narrow
+-- Only PROCESS_BL_DOCUMENTS changed. The reasoning-bearing calls keep
+-- mistral-large2:
+--
+--   WORKFLOW_INVESTIGATE_ANOMALY  produces AI_DECISION_REASON, the quantitative
+--                                justification shown to evaluators. Reasoning
+--                                quality matters, and it is not on the demo
+--                                critical path -- the demo reads 368 alerts
+--                                that already carry decisions.
+--   AI_CHAT / CHAT_WITH_DATA      text-to-SQL needs reasoning; median 1.4s.
+--   AI_GENERATE_INSIGHTS          narrative generation, runs in background.
+--   AI_EXPLAIN_ANOMALY            narrative generation, runs in background.
+--
+-- The resulting architecture matches model capability to task type: a fast
+-- model for schema-fixed deterministic extraction, a strong model for
+-- judgment. Extraction accuracy is unaffected because the confidence score is
+-- computed by BL_DOC_CONFIDENCE -- six deterministic SQL rules -- not by the
+-- model. The model only supplies field values.
+--
+-- VERIFIED AFTER THE CHANGE (live, 2026-08-20)
+--   TEST_T01_CLEAN.pdf          confidence 100, no alert
+--   TEST_T10_MULTI_FAILURE.pdf  confidence  17, 5 rules failed
+--     (BlNumber; ContainerNumber; VesselName; GrossWeightKg; DateOfIssue)
+--   OCR 0.83-1.23s, extraction 7.29-7.44s (2% spread), procedure total 13.5s
+--   AI_CALL_LOG.MODEL_NAME and COUNT_TOKENS both report llama3.1-70b, so AI
+--   FinOps attribution stays correct.
+--
+-- HOW THIS WAS APPLIED
+-- Server-side, to avoid retyping a 9.5 KB procedure body:
+--
+--   USE SCHEMA MENDIX_APP.AGENTS;
+--   SET new_ddl = (SELECT REPLACE(
+--       GET_DDL('PROCEDURE','MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()'),
+--       'mistral-large2', 'llama3.1-70b'));
+--   EXECUTE IMMEDIATE $new_ddl;
+--
+-- Six references were rewritten: one COMPLETE call, two COUNT_TOKENS calls, and
+-- three MODEL_NAME literals in the AI_CALL_LOG inserts. Confirmed afterward
+-- with REGEXP_COUNT: 0 remaining 'mistral-large2', 6 'llama3.1-70b', and the
+-- CORTEX.COMPLETE / PARSE_DOCUMENT call counts unchanged.
+--
+-- To re-apply on a fresh account, run the block above after restoring the
+-- procedure, or run sql/workflows/section13_reliability_followups.sql, which
+-- has been updated to emit llama3.1-70b directly.
+--
+-- NOTE ON database/ddl/full_database_ddl.sql
+-- That file still contains an older PROCESS_BL_DOCUMENTS (its COMMENT says
+-- "extract 4 key fields"; the live procedure extracts ~20 and logs both Cortex
+-- calls). It predates the section 13 logging work and is not the source of
+-- truth. It was left untouched rather than partially patched.
+
+-- Verification query -- expect 0 / 6 / 3 / 2
+SELECT
+  REGEXP_COUNT(d, 'mistral-large2')    AS remaining_old_model,
+  REGEXP_COUNT(d, 'llama3\\.1-70b')     AS new_model_refs,
+  REGEXP_COUNT(d, 'CORTEX\\.COMPLETE')  AS complete_calls,
+  REGEXP_COUNT(d, 'PARSE_DOCUMENT')    AS parse_calls
+FROM (
+  SELECT GET_DDL('PROCEDURE','MENDIX_APP.AGENTS.PROCESS_BL_DOCUMENTS()') AS d
+);
