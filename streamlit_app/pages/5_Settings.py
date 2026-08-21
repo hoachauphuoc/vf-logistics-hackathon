@@ -18,7 +18,7 @@ except Exception:
 st.subheader(t["model_config"])
 col1, col2 = st.columns(2)
 with col1:
-    st.metric(t["active_model"], config_dict.get("AI_MODEL", "mistral-large2"))
+    st.metric(t["active_model"], config_dict.get("AI_MODEL", "claude-sonnet-4-5"))
 with col2:
     st.metric(t["threshold_label"], f"{config_dict.get('FRAUD_CONFIDENCE_THRESHOLD', '70')}%")
 

@@ -60,7 +60,7 @@ try:
         "SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'"
     ).collect()[0]["CONFIG_VALUE"]
 except Exception:
-    ai_model = "mistral-large2"
+    ai_model = "claude-sonnet-4-5"
 
 # Session state
 if "chat_messages" not in st.session_state:
