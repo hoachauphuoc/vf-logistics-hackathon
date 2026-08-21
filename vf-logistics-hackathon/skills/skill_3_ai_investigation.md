@@ -5,12 +5,12 @@
 |-------|-------|
 | **Skill Name** | `ai_investigation_and_remediation` |
 | **Category** | Autonomous Decision-Making (Cortex AI) |
-| **Snowflake Objects** | `WORKFLOW_INVESTIGATE_ANOMALY(alert_id)`, `WORKFLOW_AUTO_REMEDIATE(alert_id, action)`, `AI_EXPLAIN_ANOMALY()`, `SNOWFLAKE.CORTEX.COMPLETE` (mistral-large2) |
+| **Snowflake Objects** | `WORKFLOW_INVESTIGATE_ANOMALY(alert_id)`, `WORKFLOW_AUTO_REMEDIATE(alert_id, action)`, `AI_EXPLAIN_ANOMALY()`, `SNOWFLAKE.CORTEX.COMPLETE` (claude-sonnet-4-5) |
 | **Trigger Phrases** | "Investigate alert #X", "Why was this shipment flagged?", "Block/Escalate/Clear this alert" |
 | **CLI Entry Point** | `CALL MENDIX_APP.AGENTS.WORKFLOW_INVESTIGATE_ANOMALY(<alert_id>);` then `CALL MENDIX_APP.AGENTS.WORKFLOW_AUTO_REMEDIATE(<alert_id>, '<ACTION>');` |
 
 ## Purpose
-This is the **reasoning core** of the agentic workflow: uses Cortex AI (`mistral-large2`) to analyze full shipment context (shipper, consignee, route, charges, weight) and generate a natural-language risk assessment, then autonomously executes a remediation action — closing the loop from *detection* to *decision* to *action* without human intervention.
+This is the **reasoning core** of the agentic workflow: uses Cortex AI (`claude-sonnet-4-5`) to analyze full shipment context (shipper, consignee, route, charges, weight) and generate a natural-language risk assessment, then autonomously executes a remediation action — closing the loop from *detection* to *decision* to *action* without human intervention.
 
 ## Step 1: AI Investigation
 
@@ -19,7 +19,7 @@ This is the **reasoning core** of the agentic workflow: uses Cortex AI (`mistral
 **Process**:
 1. Pull alert + BL context (shipper, consignee, charges, weight, route, carrier)
 2. Build context string
-3. Call `SNOWFLAKE.CORTEX.COMPLETE('mistral-large2', <prompt>)` with instruction: *"Analyze this alert and provide: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key suspicious indicators, 3) Recommended action (BLOCK/ESCALATE/CLEAR)"*
+3. Call `SNOWFLAKE.CORTEX.COMPLETE('claude-sonnet-4-5', <prompt>)` with instruction: *"Analyze this alert and provide: 1) Risk assessment (HIGH/MEDIUM/LOW), 2) Key suspicious indicators, 3) Recommended action (BLOCK/ESCALATE/CLEAR)"*
 4. Update alert `STATUS = 'INVESTIGATING'`
 
 **Output**:

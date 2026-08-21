@@ -250,5 +250,5 @@ st.divider()
 try:
     model_name = session.sql("SELECT CONFIG_VALUE FROM APP_CONFIG WHERE CONFIG_KEY = 'AI_MODEL'").collect()[0]['CONFIG_VALUE']
 except:
-    model_name = "llama3-8b"
+    model_name = "claude-sonnet-4-5"
 st.caption(t["finops_footer"].format(model=model_name, cost=f"{threshold_usd:.3f}"))

@@ -343,6 +343,7 @@ DECLARE
     v_out_tok NUMBER DEFAULT 0;
     v_tot_tok NUMBER DEFAULT 0;
     v_attempts NUMBER DEFAULT 0;
+    v_err_msg VARCHAR DEFAULT '';
     v_contract VARCHAR;
     v_options VARIANT;
 BEGIN
@@ -440,7 +441,7 @@ Alert evidence: '' || :v_context;
 
         BEGIN
             SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                       ''mistral-large2'',
+                       ''claude-sonnet-4-5'',
                        ARRAY_CONSTRUCT(OBJECT_CONSTRUCT(''role'', ''user'', ''content'', :v_prompt)),
                        :v_options)
             INTO :v_resp;
@@ -461,7 +462,7 @@ Alert evidence: '' || :v_context;
             INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG
                 (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS,
                  LATENCY_MS, INPUT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS, PROMPT, RESPONSE)
-            SELECT CURRENT_TIMESTAMP(), ''mistral-large2'', ''WORKFLOW_INVESTIGATE_ANOMALY'',
+            SELECT CURRENT_TIMESTAMP(), ''claude-sonnet-4-5'', ''WORKFLOW_INVESTIGATE_ANOMALY'',
                    ''fraud_investigation:attempt'' || :v_attempts,
                    IFF(:v_decision IS NULL, ''PARSE_RETRY'', ''SUCCESS''),
                    IFF(:v_decision IS NULL, ''PARSE_RETRY'', ''SUCCESS''),
@@ -470,11 +471,12 @@ Alert evidence: '' || :v_context;
         EXCEPTION
             WHEN OTHER THEN
                 v_elapsed_ms := DATEDIFF(''millisecond'', :v_start_ts, CURRENT_TIMESTAMP());
+                v_err_msg := SQLERRM;
                 INSERT INTO MENDIX_APP.AGENTS.AI_CALL_LOG
                     (CALL_TIMESTAMP, MODEL_NAME, PROCEDURE_NAME, CONTEXT, CALL_STATUS, STATUS, LATENCY_MS, PROMPT, RESPONSE)
-                SELECT CURRENT_TIMESTAMP(), ''mistral-large2'', ''WORKFLOW_INVESTIGATE_ANOMALY'',
+                SELECT CURRENT_TIMESTAMP(), ''claude-sonnet-4-5'', ''WORKFLOW_INVESTIGATE_ANOMALY'',
                        ''fraud_investigation:attempt'' || :v_attempts, ''ERROR'', ''ERROR'',
-                       :v_elapsed_ms, LEFT(:v_prompt, 5000), LEFT(SQLERRM, 1000);
+                       :v_elapsed_ms, LEFT(:v_prompt, 5000), LEFT(:v_err_msg, 1000);
         END;
     END WHILE;
 

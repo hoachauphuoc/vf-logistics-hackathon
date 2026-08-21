@@ -46,7 +46,7 @@ This skill enables CoCo CLI to orchestrate autonomous multi-step fraud detection
 
 **What it does:**
 - Pulls alert + full shipment context (shipper, consignee, route, charges, weight)
-- Sends to Cortex AI (mistral-large2) for risk analysis
+- Sends to Cortex AI (claude-sonnet-4-5) for risk analysis
 - Returns: risk level, suspicious indicators, recommended action
 
 ### 4. Remediation

@@ -106,7 +106,7 @@ The current demo dataset holds **just over 10,000 shipments** and **roughly $53M
                     → WORKFLOW_AUDIT_LOG (full audit trail)
 ```
 
-**Snowflake features used**: Cortex Agent, Cortex AI (`COMPLETE` — llama3.1-70b for extraction, mistral-large2 for reasoning/investigation), Cortex Analyst (text-to-SQL), Cortex Search (semantic BL search), Snowflake Marketplace (real US government export-screening data + FX rates), Dynamic Tables, Streams + Tasks, Streamlit.
+**Snowflake features used**: Cortex Agent, Cortex AI (`COMPLETE` — llama3.1-70b for extraction, claude-sonnet-4-5 for reasoning/investigation), Cortex Analyst (text-to-SQL), Cortex Search (semantic BL search), Snowflake Marketplace (real US government export-screening data + FX rates), Dynamic Tables, Streams + Tasks, Streamlit.
 
 **Languages used**: SQL (core workflow logic), **Python** (Snowpark risk scoring + Streamlit-in-Snowflake app — the sole user interface), **Java** (`mendix-integration/`, reference only — not deployed, not required to run the solution).
 
