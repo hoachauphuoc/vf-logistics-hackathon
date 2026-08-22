@@ -1,5 +1,16 @@
 # Presentation Deck Outline — VF Logistics: Intelligent Workflow Automation Agent
 
+> ⚠️ **SUPERSEDED.** This is the original 13-slide draft outline, written before the
+> Refinement Phase. The actual submitted deck, `VF_Logistics_Presentation.pptx`, has 22
+> slides, was hand-edited directly (see `tools/update_pptx.py` and its history), and
+> tells a different story on every point where this file mentions Mendix: Mendix was
+> retired from the architecture on 2026-08-19, there is no public prototype link, and
+> Streamlit-in-Snowflake is the sole interface. Extraction runs on `llama3.1-70b`, not
+> `mistral-large2`. **Do not regenerate slides from this file or copy text out of it** —
+> open the `.pptx` directly, or `python tools/dump_pptx.py` to read its actual content.
+> Kept for history rather than corrected in place, since almost every section below
+> would need rewriting to match the current deck's slide count and narrative.
+
 Slide-by-slide structure for the hackathon submission deck (PPT).
 
 This is a **PowerPoint-ready outline**: suggested on-slide text, speaker notes, and what to show on screen.
