@@ -581,3 +581,51 @@ Full detail, including every defect this migration found: [`docs/ACCOUNT_MIGRATI
 - Migrated to a third Snowflake trial account (`SIKIWEQ-LP92053`) on 2026-08-19 with full schema, data, and all 52 procedures — see migration detail above
 - Added `environment.yml` to the Streamlit stage root to declare the `plotly` dependency (fixes `ModuleNotFoundError` on the dashboard)
 - Mendix integration was **not migrated** to this account — per explicit decision, Mendix is dropped entirely rather than kept as a reference. `mendix-integration/` now documents a decommissioned account only.
+
+### Fix 4: A Cortex model retirement silently broke every AI decision
+
+While rehearsing the demo, `WORKFLOW_INVESTIGATE_ANOMALY` was returning `"AI could not
+return a valid decision; routed to human review"` on every alert. The Cortex call
+underneath it was failing with `HTTP 400 — the model mistral-large2 has been in legacy
+state, please use other models`, thrown by Snowflake, not by this code. `llama3-8b` had
+also been retired the same way. Twelve stored procedures called one of the two
+retired models: `WORKFLOW_INVESTIGATE_ANOMALY`, `CHAT_WITH_DATA`, `PARSE_DOCUMENT`,
+`CLASSIFY_COMMODITY`, `CLASSIFY_BATCH`, `EXTRACT_BL_ENTITIES`, `AI_COMPLETE_WITH_RETRY`,
+`TEST_PIPELINE_E2E`, `AI_EXPLAIN_ANOMALY` (both overloads), `AI_GENERATE_INSIGHTS`, and
+`CLASSIFY_DOCUMENT_TEXT`. Every one had failed the same way, silently, for every call
+since the retirement — the failsafe path masked it as a normal "routed to human review"
+outcome rather than an error, so nothing in the audit log distinguished a considered
+escalation from a dead model.
+
+Reasoning calls (investigation, chat) now run on `claude-sonnet-4-5`; the small-model
+calls move to `llama3.1-8b`. Extraction was unaffected — it already ran on
+`llama3.1-70b` from an earlier optimisation. Verified end to end:
+`WORKFLOW_FULL_PIPELINE_V2('AUTO', 3)` returns `"status":"COMPLETED"` with a real,
+evidence-cited reason (*"Cost-per-kg band is ELEVATED (6.16x median)... shipper Vinamilk
+Co Ltd appears to be a legitimate Vietnamese dairy company, the consignee 'Construction
+Supply Co' is generic..."*) rather than the failsafe string. Per-decision latency on the
+new model, measured from `AI_CALL_LOG`: **7.6s median, 9.1s max** for
+`WORKFLOW_INVESTIGATE_ANOMALY`, versus the retired model's 3.7s median but a **142s
+tail** — the tail, not the mean, is what drove the earlier extraction-model change and
+is the reason this account cannot pin an exact latency number as a permanent fact: any
+Cortex model can be moved to legacy state without notice, and every procedure name in
+this section was found broken the same way, one call at a time, only by actually running
+the pipeline rather than trusting that a prior successful run still holds.
+
+### Fix 5: New shipments were never compliance-checked automatically
+
+`SYNC_EXTRACTED_TO_BILL_OF_LADING` promotes an extracted PDF into the operational
+`BILL_OF_LADING` table, but nothing in that procedure — or anywhere else in the ingestion
+path — ever called `CHECK_COMPLIANCE` for the row it had just created.
+`COMPLIANCE_CHECK_PASSED` stayed `NULL` for every new shipment until someone ran
+`BATCH_CHECK_COMPLIANCE` by hand. This is the same class of defect as Fix 1c
+(`BATCH_CHECK_COMPLIANCE` evaluating no rules), except it affects the future rather than
+the historical backlog: Fix 1c made the one-time backfill honest, but nothing made the
+*next* PDF honest.
+
+`SYNC_EXTRACTED_TO_BILL_OF_LADING` now calls `CHECK_COMPLIANCE(:v_bl_id)` in the same
+loop iteration that inserts the row, so a shipment is compliance-checked the moment it
+exists — no manual step, no batch window, no risk of a demo showing a clean-looking
+`NEVER_CHECKED = 0` that only holds because someone remembered to run a script first.
+Verified with a throwaway extraction row: `COMPLIANCE_CHECK_PASSED` was `TRUE`
+immediately after sync, with no `BATCH_CHECK_COMPLIANCE` call in between.
