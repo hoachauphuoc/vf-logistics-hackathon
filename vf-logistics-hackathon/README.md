@@ -629,3 +629,13 @@ exists — no manual step, no batch window, no risk of a demo showing a clean-lo
 `NEVER_CHECKED = 0` that only holds because someone remembered to run a script first.
 Verified with a throwaway extraction row: `COMPLIANCE_CHECK_PASSED` was `TRUE`
 immediately after sync, with no `BATCH_CHECK_COMPLIANCE` call in between.
+
+**Confirmed again under real use, not a synthetic test, on 2026-08-22:** two genuine
+PDFs (`TEST_T01_CLEAN.pdf`, `TEST_T10_MULTI_FAILURE.pdf`) were run through the live
+pipeline while rehearsing the demo recording. `BILL_OF_LADING` grew from 10,017 to
+10,019 rows and `NEVER_CHECKED` stayed at `0` — both new shipments were
+compliance-checked the moment `SYNC_EXTRACTED_TO_BILL_OF_LADING` created them, with
+zero manual intervention. `COMPLIANCE_FAILED` held exactly at 1,351, meaning both passed.
+These two rows were deliberately **not** rolled back afterward — real pipeline output is
+stronger evidence than a clean-looking demo account, and every number in this README is
+a dated snapshot rather than a promise that the count never moves.
