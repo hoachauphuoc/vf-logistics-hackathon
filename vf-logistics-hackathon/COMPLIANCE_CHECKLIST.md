@@ -10,7 +10,7 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 |-------------|--------|-------|
 | (a) Complete profile (name, email, phone, country) | ✅ Completed | Registered on Contest Site |
 | (b) The Idea | ✅ Yes | Intelligent Workflow Automation Agent for logistics fraud detection |
-| (c) The Prototype | ✅ Yes | VF Logistics Portal (Mendix public prototype at https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive) + Snowflake backend working end-to-end |
+| (c) The Prototype | ✅ Yes | VF Logistics Dashboard — a Streamlit-in-Snowflake application (`MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`) that is the **sole** user interface, running natively inside the Snowflake account it operates on. There is no separate front-end tier and no external hosting |
 | (d) Presentation materials + source code link | ✅ Yes | Source code: https://github.com/hoachauphuoc/vf-logistics-hackathon — README, presentation outline, CoCo CLI evidence and test report all included; recording scripts are intentionally kept local because judges do not need them |
 
 ## 2. Section 4.2 — Language
@@ -42,9 +42,9 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | Requirement | Status | Action |
 |-------------|--------|--------|
 | (a) Presentation deck (PPT) | ✅ Final | `VF_Logistics_Presentation.pptx` finalized (16 slides); excluded from git by `.gitignore`, uploaded directly to the contest portal |
-| (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, includes the submission docs, agent-skill SQL, Streamlit app source, Snowpark script and Mendix Java integration |
+| (b) Source code on GitHub | ✅ Published | https://github.com/hoachauphuoc/vf-logistics-hackathon — public repository, includes the submission docs, agent-skill SQL, Streamlit app source, and Snowpark script. An early Java/Mendix integration was retired from the architecture on 2026-08-19 and is kept only under `mendix-integration/` as a historical reference — it is not deployed and is not required to run the solution |
 | (c) Live demo (if reaching Finals) | ✅ Ready | `CALL WORKFLOW_FULL_PIPELINE_V2('AUTO')` runs successfully via Cortex Code / SQL CLI, typically ~4-8s depending on warm state |
-| (d) Technical readiness | ✅ | Mendix public prototype, Streamlit monitoring UI, and CLI-driven backend were revalidated after the 2026-08-01 account migration, grants fix, and regression-test hardening |
+| (d) Technical readiness | ✅ | The Streamlit-in-Snowflake application and CLI-driven backend were revalidated after the account migrations, grants fix, and regression-test hardening. The former Mendix front end was fully retired, not just "also working" |
 | (e) Demo video | ✅ Recorded | Full CoCo CLI + Snowsight + Streamlit walkthrough recorded (~4:40, 1280x676 source captured at 4K then reviewed at 720p); reviewed for accidental secret exposure — none found |
 
 ## 5. Section 5 — Entry Warranties (⚠️ CRITICAL)
@@ -59,11 +59,18 @@ Cross-reference of VF Logistics solution against the hackathon's Terms & Conditi
 | (h) No malicious code | ✅ Compliant | |
 | (i) Not misleading, accurate | ✅ Compliant | Re-audited 2026-08-17: wording about the Marketplace screening dataset was corrected from "live" to "real government data, historical snapshot to 2024-04-10", after verifying the provider's feed had stopped updating (see Section 5.1) |
 
-### ✅ Security fix completed — and then improved
+### ✅ Security fix completed — and then the entire component was retired
 
-The original defect was a literal password compiled into the Mendix Java action. It was
-first moved to an environment variable, and the credential itself was subsequently
-**replaced with key-pair (JWT) authentication**, which is the mechanism in use today:
+> **Historical record only.** The Java/Mendix integration described below was **removed
+> from the architecture on 2026-08-19**. It is not deployed, has no running credentials,
+> and is not part of the solution a judge will see or use. It is documented here strictly
+> because Warranty (d) requires disclosure of any credential-handling defect that ever
+> existed, and it shows the actual remediation path rather than omitting the finding.
+
+The original defect was a literal password compiled into the (now-retired) Mendix Java
+action. It was first moved to an environment variable, and the credential itself was
+subsequently **replaced with key-pair (JWT) authentication** before the component was
+retired outright:
 
 ```java
 // BEFORE (insecure — a literal password was compiled into the Java action;
@@ -74,13 +81,14 @@ props.put("password", "<REDACTED — was a hardcoded literal>");
 String password = System.getenv("SNOWFLAKE_MENDIX_PASSWORD");
 props.put("password", password);
 
-// CURRENT (key-pair / JWT — no password exists for this user at all):
+// FINAL, BEFORE RETIREMENT (key-pair / JWT — no password existed for this user):
 props.put("authenticator", "SNOWFLAKE_JWT");
-props.put("private_key_file", privateKeyPath);   // .p8 in Mendix runtime resources, git-ignored
+props.put("private_key_file", privateKeyPath);   // .p8, git-ignored
 ```
 
-`MENDIX_SERVICE_USER` has `has_password = false` and `has_rsa_public_key = true` in
-Snowflake, so the key-pair path is verifiable rather than merely claimed.
+The service user this Java code once authenticated as has since been dropped along with
+the rest of the integration. There is no credential in the current architecture that
+traces back to this defect.
 
 ## 5.1 Accuracy re-audit of the Marketplace dependency (2026-08-17)
 
@@ -108,7 +116,7 @@ requires the Entry not to be misleading:
 | # | Criteria | Status | Evidence |
 |---|----------|--------|----------|
 | 1 | Idea + Prototype using **Cortex Code CLI** | ✅ Compliant | All development, debugging (fixed AUTOINCREMENT bug, mounted Marketplace listing, fixed the hardcoded-remediation flaw), and migration performed via CoCo CLI — **verifiable evidence with reproducible SQL in `docs/COCO_CLI_EVIDENCE.md`** |
-| 2 | Uses Python, Java, and/or Scala | ✅ Compliant | Java (Mendix) ✅, Python (Streamlit + Snowpark script) ✅ |
+| 2 | Uses Python, Java, and/or Scala | ✅ Compliant | Python — Streamlit-in-Snowflake app + Snowpark script. The requirement is "and/or"; Python alone satisfies it |
 | 3 | Uses Snowflake's platform | ✅ Strong compliance | Cortex Agent, Cortex Search, Cortex AI (COMPLETE), Dynamic Tables, Tasks, Streams |
 | 4 | Preference: Snowpark, Worksheets, Streamlit, Marketplace | ✅ Compliant | Streamlit ✅, Marketplace ✅ (Public Data Free), Snowpark ✅ |
 
@@ -132,9 +140,9 @@ requires the Entry not to be misleading:
 
 | # | Item | Status |
 |---|---|---|
-| 1 | **Security** — no hardcoded credentials | ✅ password moved to `SNOWFLAKE_MENDIX_PASSWORD`; the illustrative literal was also redacted from this document before publishing |
+| 1 | **Security** — no hardcoded credentials | ✅ Password moved to an environment variable, then superseded by key-pair (JWT) auth; the entire Java/Mendix component this defect lived in was later retired from the architecture. No credential in the current solution traces back to it |
 | 2 | **Language** — English only (§4.2) | ✅ all docs, deck and code comments; one disclosed exception (bilingual Cortex Analyst synonyms, Section 2) |
-| 3 | **Python / Java** (§9.2) | ✅ Snowpark + Streamlit (Python), Mendix JDBC action (Java) |
+| 3 | **Python** (§9.2) | ✅ Streamlit-in-Snowflake app + Snowpark script — satisfies the Python/Java/Scala requirement on its own |
 | 4 | **Agent Skills** | ✅ 3 skills documented, with the DOCUMENT_QUALITY rule added to Skill 1 |
 | 5 | **CoCo CLI evidence** (§9.1) | ✅ `docs/COCO_CLI_EVIDENCE.md` — 8 engineering sessions, each with SQL a judge can re-run |
 | 6 | **Decision integrity** | ✅ AI decision drives remediation; decision + reason persisted and surfaced |
@@ -142,10 +150,10 @@ requires the Entry not to be misleading:
 | 8 | **GitHub source code** (§4.5b) | ✅ https://github.com/hoachauphuoc/vf-logistics-hackathon (public) |
 | 9 | **Presentation deck** (§4.5a) | ✅ `VF_Logistics_Presentation.pptx` — 16 slides, finalized; upload directly to the portal (excluded from git by `.gitignore`) |
 | 9b | **Demo video** | ✅ Recorded and reviewed (CLI + Snowsight + Streamlit walkthrough); no secrets or credentials found on screen |
-| 10 | **Public MVP URL** | ✅ https://vflogisticsportal-sandbox.mxapps.io/p/HomeWeb?profile=Responsive (verified reachable anonymously) |
+| 10 | **Prototype access** | ✅ Streamlit-in-Snowflake app `MENDIX_APP.AGENTS.VF_LOGISTICS_DASHBOARD`, opened from Snowsight → Streamlit. This is the **only** front end; there is no separate public URL because the application runs natively inside Snowflake and requires a Snowflake session, not anonymous web access |
 | 11 | **Registration** (§4.1a) | ✅ team "Sora", 2 members, confirmed on the contest portal |
 | 12 | **Validation report** | ✅ `../docs/reference/TEST_REPORT_FINAL_2026-08-01.md` |
-| 13 | **Judge read-only access** | ✅ Optional `HACKATHON_JUDGE` account exists for Streamlit review, but it is positioned as bonus access rather than the primary prototype entry point; the primary low-friction reviewer path remains the public Mendix prototype + demo video |
+| 13 | **Judge read-only access** | ✅ `HACKATHON_JUDGE` account (read-only role) is the **primary** — and only — way for a judge to open the prototype, since it is Streamlit-in-Snowflake rather than a public website. Credentials are shared via the submission form, never in the repository |
 | 14 | **Submit through the portal Submissions tab** | ✅ Completed | Submission uploaded through portal |
 
 **Deadline note:** the Terms & Conditions state the Submission Period closed **2026-08-02 23:59 IST**, and that submission was completed. The entry was subsequently **shortlisted**, opening a **Refinement Phase with a hard deadline of 2026-08-23 23:59 IST** for final refinement and optimisation. All items above refer to the original submission; refinement work carried out after shortlisting is recorded in Section 9 of [`../docs/reference/TEST_REPORT_FINAL_2026-08-01.md`](../docs/reference/TEST_REPORT_FINAL_2026-08-01.md).
