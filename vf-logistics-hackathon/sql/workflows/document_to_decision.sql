@@ -93,6 +93,13 @@ BEGIN
         SET SYNCED_TO_BL_AT = CURRENT_TIMESTAMP(), BL_ID = :v_bl_id
         WHERE DOC_ID = :v_doc_id;
 
+        -- 2026-08-22 fix: every newly-promoted shipment is compliance-checked
+        -- immediately, in the same transaction that creates it. Before this,
+        -- COMPLIANCE_CHECK_PASSED stayed NULL for new PDFs until someone ran
+        -- BATCH_CHECK_COMPLIANCE by hand -- a real automation gap, not just a
+        -- documentation one.
+        CALL MENDIX_APP.AGENTS.CHECK_COMPLIANCE(:v_bl_id);
+
         v_promoted := :v_promoted + 1;
     END FOR;
 
